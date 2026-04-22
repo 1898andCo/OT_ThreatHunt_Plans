@@ -1,6 +1,7 @@
-# Threat Hunt Plan: Helmholz WALL IE - Sweet32 3DES Cryptographic Weakness
+# Threat Hunt Plan: Helmholz WALL IE Sweet32 3DES Cryptographic Weakness
 
-> Date: 2026-04-22 | Revision: 2.0
+> Date: 2026-04-22 | Revision 2.0
+
 
 # Hunt Objective and Scope
 
@@ -8,7 +9,7 @@ This hunt seeks evidence of exploitable Sweet32 conditions against Helmholz WALL
 
 Environment in scope: every OT-to-IT boundary segment hosting a WALL IE device; every engineering workstation or shared jump host that administers one; every site-to-site IPSec peer on the other side of a WALL IE tunnel. Asset coverage includes all firmware variants up to and including 1.10.210 on the Standard 4-Port platform.
 
-#### Time window: last 180 days from hunt kickoff. The extended window reflects that Sweet32 exploitation is patient-adversary work — collisions accrue over weeks-long tunnel lifetimes — so recent telemetry alone is insufficient for confident coverage.
+**Time window: last 180 days from hunt kickoff. The extended window reflects that Sweet32 exploitation is patient-adversary work — collisions accrue over weeks-long tunnel lifetimes — so recent telemetry alone is insufficient for confident coverage.**
 
 Every bracketed placeholder in this hunt plan (for example, <wallie_subnet>, <wallie_ip_list>, <approved_admin_subnet>, <community>, <legacy_peer_register>) must be replaced with the client-specific value before any query is executed. A search-and-replace pass across the document is the recommended approach; operators should maintain a local token-to-value mapping so the same token in different queries receives the same replacement.
 
@@ -22,8 +23,9 @@ A network-adjacent attacker has been collecting 3DES-CBC-encrypted TLS sessions 
 
 ### Collection Queries
 
-#### CrowdStrike Falcon FQL — connections from engineering workstations to the WALL IE subnet:
+**CrowdStrike Falcon FQL — connections from engineering workstations to the WALL IE subnet:**
 
+```text
 #event_simpleName = "NetworkConnectIP4"
 
 | cidr(RemoteAddressIP4, subnet=["<wallie_subnet>"])
@@ -45,45 +47,55 @@ include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]
 tcpdump capture on the SPAN port facing the WALL IE management VLAN:
 
 tcpdump -i <span_iface> -w /pcaps/wallie_tls_%Y%m%d_%H%M.pcap -G 3600 -C 100 -W 168 'host <wallie_ip_list> and tcp port 443'
+```
 
-#### Datadog Log Search — time range: last 180 days:
+**Datadog Log Search — time range: last 180 days:**
 
+```text
 source:firewall @network.destination.ip:<wallie_subnet> @network.destination.port:443
+```
 
-#### Datadog Live Process Monitoring (Infrastructure > Processes — NOT a log source):
+**Datadog Live Process Monitoring (Infrastructure > Processes — NOT a log source):**
 
+```text
 command:(openssl.exe OR wireshark.exe OR tshark.exe OR python.exe) user:<ot_admin_user>
+```
 
-#### Windows Event ID collection — 5156 outbound TCP/443 connections from admin workstations to WALL IE:
+**Windows Event ID collection — 5156 outbound TCP/443 connections from admin workstations to WALL IE:**
 
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; ID=5156; StartTime=(Get-Date).AddDays(-180)} |
 
 Where-Object { $_.Message -match '<wallie_subnet_regex>' -and $_.Message -match 'Destination Port:\s*443' } |
 
 Export-Csv -Path .\wallie_tls_connections.csv -NoTypeInformation
+```
 
-#### OT Data Collection
+**OT Data Collection**
 
-- Claroty CTD — Administration > Reports > Connection Activity, filter Protocol = TLS and Asset = WALL IE inventory, date range = last 180 days, export CSV.
+**- Claroty CTD — Administration > Reports > Connection Activity, filter Protocol = TLS and Asset = WALL IE inventory, date range = last 180 days, export CSV.**
 
-- Dragos Platform — Investigate > Connection Timeline, filter Protocol = TLS/HTTPS to WALL IE assets; Detections panel filtered by Category = Collection for adversary-in-the-middle alerts.
+**- Dragos Platform — Investigate > Connection Timeline, filter Protocol = TLS/HTTPS to WALL IE assets; Detections panel filtered by Category = Collection for adversary-in-the-middle alerts.**
 
-- Nozomi Networks — Assets > Connections, filter Protocol = TLS via GET /api/open/connections?protocol=tls&asset=<wallie_asset_id>.
+**- Nozomi Networks — Assets > Connections, filter Protocol = TLS via GET /api/open/connections?protocol=tls&asset=<wallie_asset_id>.**
 
-- Armis — Asset Management > Devices > filter Vendor = Helmholz, export CSV; REST GET /api/v1/devices?type=OT&vendor=Helmholz; check Policy violations on TLS sessions with weak cipher suites.
+**- Armis — Asset Management > Devices > filter Vendor = Helmholz, export CSV; REST GET /api/v1/devices?type=OT&vendor=Helmholz; check Policy violations on TLS sessions with weak cipher suites.**
 
-- Tenable OT — Assets > Devices > Export filtered Vendor=Helmholz; Vulnerabilities view for CVE-2016-2183 across the asset inventory.
+**- Tenable OT — Assets > Devices > Export filtered Vendor=Helmholz; Vulnerabilities view for CVE-2016-2183 across the asset inventory.**
 
-- Forescout eyeInspect — Inventory > Devices > Export filtered on Helmholz vendor string; Threat Detection panel for Weak-Cipher alerts on WALL IE assets.
+**- Forescout eyeInspect — Inventory > Devices > Export filtered on Helmholz vendor string; Threat Detection panel for Weak-Cipher alerts on WALL IE assets.**
 
-#### YARA file-system scan on admin workstations for Sweet32 exploit tooling:
+**YARA file-system scan on admin workstations for Sweet32 exploit tooling:**
 
+```text
 yara -r C:\Users\pac\\claude\tools\rules\Sweet32_Exploit_Tooling.yar <user_profile_root> >> sweet32_filesystem_hits.txt
+```
 
 ### Analysis Queries
 
-#### CrowdStrike Falcon FQL — rare and long-duration TLS connections to WALL IE:
+**CrowdStrike Falcon FQL — rare and long-duration TLS connections to WALL IE:**
 
+```text
 #event_simpleName = "NetworkConnectIP4"
 
 | cidr(RemoteAddressIP4, subnet=["<wallie_subnet>"])
@@ -93,25 +105,31 @@ yara -r C:\Users\pac\\claude\tools\rules\Sweet32_Exploit_Tooling.yar <user_profi
 | groupBy([ComputerName, RemoteAddressIP4], function=count(), limit=100000)
 
 | sort(_count, order=desc, limit=50)
+```
 
-#### Wireshark display filter — TLS handshakes negotiating 3DES ciphers to WALL IE:
+**Wireshark display filter — TLS handshakes negotiating 3DES ciphers to WALL IE:**
 
+```text
 tls.handshake.type == 2 and (tls.handshake.ciphersuite == 0x000a or tls.handshake.ciphersuite == 0xc012 or tls.handshake.ciphersuite == 0x0016 or tls.handshake.ciphersuite == 0x008b or tls.handshake.ciphersuite == 0xc003 or tls.handshake.ciphersuite == 0xc008) and ip.src in {<wallie_ip_list>}
+```
 
-#### tshark equivalent:
+**tshark equivalent:**
 
+```text
 tshark -r wallie_tls.pcap -Y 'tls.handshake.type == 2 and tls.handshake.ciphersuite in {0x000a 0xc012 0x0016 0x008b 0xc003 0xc008} and ip.src in {<wallie_ip_list>}' -T fields -e frame.time -e ip.src -e ip.dst -e tls.handshake.ciphersuite
 
 sslyze cipher enumeration against each WALL IE:
 
 for ip in $(cat <wallie_ip_list_file>); do sslyze --certinfo --tls_v1_0 --tls_v1_1 --tls_v1_2 --cipher_suite_name_regex '3DES|DES' $ip:443; done > wallie_cipher_audit.log
 
-#### Datadog Log Analytics — Timeseries view, group by @network.destination.ip; time range: last 180 days:
+**Datadog Log Analytics — Timeseries view, group by @network.destination.ip; time range: last 180 days:**
 
 source:firewall @network.destination.ip:<wallie_subnet> @network.destination.port:443
+```
 
-#### Datadog Monitor — H1 alert:
+**Datadog Monitor — H1 alert:**
 
+```text
 Type: Log Alert
 
 Query: source:firewall @network.destination.ip:<wallie_subnet> @network.destination.port:443 @tls.cipher_suite:(*3DES* OR *DES_EDE*)
@@ -125,10 +143,13 @@ Message: "ALERT: 3DES cipher suite negotiated against WALL IE — CVE-2016-2183 
 Prerequisites: Firewall TLS decrypt logs forwarded with @tls.cipher_suite populated
 
 Create via: Monitors > New Monitor > Log Alert
+```
 
-#### YARA memory scan via Falcon RTR:
+**YARA memory scan via Falcon RTR:**
 
+```text
 runscript -Raw='Get-Process | ForEach-Object { yara -p $_.Id C:\CrowdStrike\yara\Sweet32_Exploit_Tooling.yar } 2>&1 | Tee-Object sweet32_memory_hits.txt'
+```
 
 ## Hypothesis 2
 
@@ -140,66 +161,85 @@ A site-to-site IPSec tunnel terminating on a WALL IE is negotiating 3DES-ESP or 
 
 tcpdump capture on the SPAN port facing the IPSec-terminating WALL IE uplink:
 
+```text
 tcpdump -i <span_iface> -w /pcaps/wallie_ipsec_%Y%m%d_%H%M.pcap -G 3600 -C 100 -W 168 '(udp port 500 or udp port 4500 or proto 50)'
 
 ike-scan active cipher enumeration against each WALL IE:
 
 for ip in $(cat <wallie_ip_list_file>); do ike-scan -M --trans=5,2,1,2 --trans=5,2,1,1 $ip; done > wallie_ike_transforms.log
+```
 
-#### Datadog Log Search — time range: last 180 days:
+**Datadog Log Search — time range: last 180 days:**
 
+```text
 source:(firewall OR syslog) (message:"IKE Phase 2" OR message:"ESP SA" OR message:"child SA") host:<wallie_peer_list>
+```
 
-#### Windows Event ID collection — 4984 (IPSec SA established), 5451 (IPSec MM SA), 5453 (IPSec QM SA):
+**Windows Event ID collection — 4984 (IPSec SA established), 5451 (IPSec MM SA), 5453 (IPSec QM SA):**
 
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4984,5451,5453; StartTime=(Get-Date).AddDays(-180)} |
 
 Where-Object { $_.Message -match '<wallie_ip_regex>' } |
 
 Export-Csv .\wallie_ipsec_sa.csv -NoTypeInformation
+```
 
-#### SNMP polling — tunnel interface byte counters on each WALL IE:
+**SNMP polling — tunnel interface byte counters on each WALL IE:**
 
+```text
 snmpget -v2c -c <community> <wallie_ip> IF-MIB::ifInOctets.<tunnel_ifIndex> IF-MIB::ifOutOctets.<tunnel_ifIndex> >> wallie_tunnel_bytes_$(date +%s).log
+```
 
-#### OT Data Collection
+**OT Data Collection**
 
-- Claroty CTD — Protocols view filtered ESP/IKE, export SA-establishment records from the hunt window.
+**- Claroty CTD — Protocols view filtered ESP/IKE, export SA-establishment records from the hunt window.**
 
-- Dragos Platform — Investigate > Connection Timeline, filter Protocol = ESP or IKE; Detections panel for Weak-Cipher / Long-SA alerts.
+**- Dragos Platform — Investigate > Connection Timeline, filter Protocol = ESP or IKE; Detections panel for Weak-Cipher / Long-SA alerts.**
 
-- Nozomi Networks — Assets > Connections, filter Protocol = ESP; GET /api/open/connections?protocol=esp&asset=<wallie_asset_id>.
+**- Nozomi Networks — Assets > Connections, filter Protocol = ESP; GET /api/open/connections?protocol=esp&asset=<wallie_asset_id>.**
 
-- Armis — Policy engine alerts for long-lived IPSec SAs with legacy cipher on OT assets.
+**- Armis — Policy engine alerts for long-lived IPSec SAs with legacy cipher on OT assets.**
 
-- Tenable OT — Events view filter Protocol = IKE; Vulnerabilities view for CVE-2016-2183 device mapping.
+**- Tenable OT — Events view filter Protocol = IKE; Vulnerabilities view for CVE-2016-2183 device mapping.**
 
-- Forescout eyeInspect — Threat Detection panel filtered to IPSec Weak-Cipher category.
+**- Forescout eyeInspect — Threat Detection panel filtered to IPSec Weak-Cipher category.**
 
 YARA scan for VPN configuration files with explicit 3DES policy:
 
+```text
 yara -r C:\Users\pac\\claude\tools\rules\IPSec_3DES_Policy.yar <vpn_config_root> >> 3des_policy_hits.txt
+```
 
 ### Analysis Queries
 
-#### Wireshark display filter — IKE proposals offering 3DES:
+**Wireshark display filter — IKE proposals offering 3DES:**
 
+```text
 isakmp.spi.initiator and isakmp.transform.id == 3
+```
 
-#### tshark equivalent:
+**tshark equivalent:**
 
+```text
 tshark -r wallie_ipsec.pcap -Y 'isakmp.spi.initiator and isakmp.transform.id == 3' -T fields -e frame.time -e ip.src -e ip.dst -e isakmp.transform.id
+```
 
 SA throughput differential analysis (identify tunnels exceeding ~32 GB lifetime data):
 
+```text
 awk '{print $1, $2, $3}' wallie_tunnel_bytes_*.log | sort -k1,1 -k2,2n | awk '{if (prev_ip == $2 && ($3 - prev_bytes) > 32000000000) print "EXCEED: " $0; prev_ip=$2; prev_bytes=$3}' > wallie_sweet32_threshold_exceed.txt
+```
 
-#### Datadog Log Analytics — Top List view, group by @peer.ip; time range: last 180 days:
+**Datadog Log Analytics — Top List view, group by @peer.ip; time range: last 180 days:**
 
+```text
 source:(firewall OR syslog) "IKE Phase 2" @transform.encryption:(*3DES* OR *DES*)
+```
 
-#### Datadog Monitor — H2 alert:
+**Datadog Monitor — H2 alert:**
 
+```text
 Type: Log Alert
 
 Query: source:(firewall OR syslog) ("IKE Phase 2" OR "child SA established") @transform.encryption:(*3DES* OR *DES_CBC*) host:<wallie_peer_list>
@@ -213,12 +253,15 @@ Message: "ALERT: IPSec SA established with 3DES transform on WALL IE — CVE-201
 Prerequisites: IPSec/IKE logs forwarded from WALL IE peers with @transform.encryption populated
 
 Create via: Monitors > New Monitor > Log Alert
+```
 
-#### Windows Event Log analysis — long-lived IPSec SAs on Windows peers:
+**Windows Event Log analysis — long-lived IPSec SAs on Windows peers:**
 
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4984; StartTime=(Get-Date).AddDays(-180)} |
 
 Where-Object { $_.Message -match '<wallie_ip_regex>' } |
+```
 
 Select-Object TimeCreated, MachineName, @{N='SA';E={$_.Message}} |
 
@@ -234,54 +277,67 @@ WALL IE devices in the current asset inventory are running firmware at or below 
 
 Direct device version probe via HTTP banner or SNMP sysDescr:
 
+```text
 for ip in $(cat <wallie_ip_list_file>); do echo "=== $ip ==="; curl -sk --max-time 5 <https://$ip/> | grep -iE 'firmware|version|WALL IE' | head -5; snmpget -v2c -c <community> $ip 1.3.6.1.2.1.1.1.0; done > wallie_firmware_inventory.log
 
 nmap banner + NSE scan for WALL IE fingerprint:
 
 nmap -sV --script http-title,http-headers,ssl-enum-ciphers -p 80,443 -iL <wallie_ip_list_file> -oN wallie_nmap_fingerprint.txt
+```
 
-#### Datadog Log Search — time range: last 30 days:
+**Datadog Log Search — time range: last 30 days:**
 
+```text
 source:(armis OR tenable_ot OR claroty) @device.vendor:Helmholz @device.model:"WALL IE*"
+```
 
-#### Windows Event ID 4688 — admin-tool executions on the admin jump host:
+**Windows Event ID 4688 — admin-tool executions on the admin jump host:**
 
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4688; StartTime=(Get-Date).AddDays(-180)} |
 
 Where-Object { $_.Message -match 'WALLconfig|Helmholz|wallie' } |
 
 Export-Csv .\wallie_admin_tool_runs.csv -NoTypeInformation
+```
 
-#### OT Data Collection
+**OT Data Collection**
 
-- Claroty CTD — Assets > WALL IE inventory > Firmware Version field; export baseline; compare to 1.10.232 target.
+**- Claroty CTD — Assets > WALL IE inventory > Firmware Version field; export baseline; compare to 1.10.232 target.**
 
-- Dragos Platform — Assets > Asset Details for each WALL IE — Firmware Version History panel; flag any unit below 1.10.232.
+**- Dragos Platform — Assets > Asset Details for each WALL IE — Firmware Version History panel; flag any unit below 1.10.232.**
 
-- Nozomi Networks — Assets > WALL IE inventory > Property Changes; GET /api/open/assets?vendor=Helmholz.
+**- Nozomi Networks — Assets > WALL IE inventory > Property Changes; GET /api/open/assets?vendor=Helmholz.**
 
-- Armis — Asset Activity firmware version attribute per WALL IE.
+**- Armis — Asset Activity firmware version attribute per WALL IE.**
 
-- Tenable OT — Assets > Helmholz device detail > Firmware History; Vulnerabilities view lists CVE-2016-2183 hits.
+**- Tenable OT — Assets > Helmholz device detail > Firmware History; Vulnerabilities view lists CVE-2016-2183 hits.**
 
-- Forescout eyeInspect — Asset timeline per WALL IE, filter Event Type = Firmware Change.
+**- Forescout eyeInspect — Asset timeline per WALL IE, filter Event Type = Firmware Change.**
 
 YARA scan for Helmholz firmware images on engineering workstations / staging servers:
 
+```text
 yara -r C:\Users\pac\\claude\tools\rules\Helmholz_Firmware_Image.yar <firmware_staging_root> >> helmholz_firmware_hits.txt
+```
 
 ### Analysis Queries
 
 Unpatched-device enumeration across all OT platforms (union the exports):
 
+```text
 awk -F'|' '$NF < "1.10.232" {print $1,$2,$NF}' wallie_firmware_inventory.log | sort -u > wallie_unpatched.txt
+```
 
-#### Datadog Log Analytics — Top List view, group by @device.firmware_version; time range: last 7 days:
+**Datadog Log Analytics — Top List view, group by @device.firmware_version; time range: last 7 days:**
 
+```text
 source:(armis OR tenable_ot OR claroty) @device.vendor:Helmholz @device.model:"WALL IE*"
+```
 
-#### Datadog Monitor — H3 alert:
+**Datadog Monitor — H3 alert:**
 
+```text
 Type: Log Alert
 
 Query: source:(armis OR tenable_ot OR claroty) @device.vendor:Helmholz @device.firmware_version:<1.10.232
@@ -295,6 +351,7 @@ Message: "ALERT: WALL IE asset still on vulnerable firmware — CVE-2016-2183 ex
 Prerequisites: Asset-inventory integration forwarding @device.firmware_version
 
 Create via: Monitors > New Monitor > Log Alert
+```
 
 ## Hypothesis 4
 
@@ -306,50 +363,63 @@ An adversary has leveraged a successful Sweet32 plaintext recovery against a WAL
 
 tcpdump on the SPAN port facing the WALL IE management VLAN to capture admin logon traffic:
 
+```text
 tcpdump -i <span_iface> -w /pcaps/wallie_admin_%Y%m%d_%H%M.pcap -G 1800 -C 100 -W 336 'host <wallie_ip_list> and (tcp port 443 or tcp port 22)'
+```
 
-#### Datadog Log Search — time range: last 180 days:
+**Datadog Log Search — time range: last 180 days:**
 
+```text
 source:syslog host:<wallie_hostname_list> (message:"login" OR message:"config" OR message:"rule")
+```
 
-#### Datadog CloudTrail — time range: last 180 days:
+**Datadog CloudTrail — time range: last 180 days:**
 
+```text
 source:cloudtrail @evt.name:(ConsoleLogin OR AssumeRole) -@network.client.ip:(<known_ot_admin_ip_list>)
+```
 
-#### Windows Event ID collection — 4624 (successful logon), 4625 (failed logon) on admin jump host:
+**Windows Event ID collection — 4624 (successful logon), 4625 (failed logon) on admin jump host:**
 
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4624,4625; StartTime=(Get-Date).AddDays(-180)} |
 
 Where-Object { $_.MachineName -match '<wallie_admin_jump_host>' } |
 
 Export-Csv .\wallie_admin_logons.csv -NoTypeInformation
+```
 
-#### SNMP polling — baseline sysUpTime to detect config-applied reboots:
+**SNMP polling — baseline sysUpTime to detect config-applied reboots:**
 
+```text
 snmpget -v2c -c <community> <wallie_ip> 1.3.6.1.2.1.1.3.0 >> wallie_sysuptime_$(date +%s).log
+```
 
-#### OT Data Collection
+**OT Data Collection**
 
-- Claroty CTD — Administration > Reports > Configuration Changes, filter Asset = WALL IE inventory; flag any change without a matching ticket.
+**- Claroty CTD — Administration > Reports > Configuration Changes, filter Asset = WALL IE inventory; flag any change without a matching ticket.**
 
-- Dragos Platform — Detections filter Category = Impact or Defense Evasion; Assets > Device Timeline for any WALL IE with config changes outside a scheduled window.
+**- Dragos Platform — Detections filter Category = Impact or Defense Evasion; Assets > Device Timeline for any WALL IE with config changes outside a scheduled window.**
 
-- Nozomi Networks — Reports > Configuration Changes, export for hunt window; GET /api/open/events?category=configuration_change&asset=<wallie_asset_id>.
+**- Nozomi Networks — Reports > Configuration Changes, export for hunt window; GET /api/open/events?category=configuration_change&asset=<wallie_asset_id>.**
 
-- Armis — Policy engine alerts for "Unauthorized Config Change" on WALL IE devices.
+**- Armis — Policy engine alerts for "Unauthorized Config Change" on WALL IE devices.**
 
-- Tenable OT — Events view filtered Event Type = Configuration Change with Source Asset = WALL IE inventory.
+**- Tenable OT — Events view filtered Event Type = Configuration Change with Source Asset = WALL IE inventory.**
 
-- Forescout eyeInspect — Inventory > Asset History per WALL IE; Threat Detection alerts of type Config Modification.
+**- Forescout eyeInspect — Inventory > Asset History per WALL IE; Threat Detection alerts of type Config Modification.**
 
 YARA scan for WALL IE admin session cookie artifacts staged for replay:
 
+```text
 yara -r C:\Users\pac\\claude\tools\rules\WALLIE_Session_Cookies.yar <user_profile_root> >> wallie_cookie_hits.txt
+```
 
 ### Analysis Queries
 
-#### CrowdStrike Falcon FQL — connections from unexpected sources to the WALL IE management interface:
+**CrowdStrike Falcon FQL — connections from unexpected sources to the WALL IE management interface:**
 
+```text
 #event_simpleName = "NetworkConnectIP4"
 
 | cidr(RemoteAddressIP4, subnet=["<wallie_subnet>"])
@@ -369,13 +439,17 @@ include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]
 )
 
 | table([ComputerName, FileName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName])
+```
 
-#### Datadog Log Analytics — Timeseries view, group by @host; time range: last 180 days:
+**Datadog Log Analytics — Timeseries view, group by @host; time range: last 180 days:**
 
+```text
 source:syslog host:<wallie_hostname_list> message:("config changed" OR "rule modified" OR "nat updated")
+```
 
-#### Datadog Monitor — H4 alert:
+**Datadog Monitor — H4 alert:**
 
+```text
 Type: Log Alert
 
 Query: source:syslog host:<wallie_hostname_list> ("login" OR "config changed") -@user.name:(<approved_admin_list>)
@@ -389,30 +463,33 @@ Message: "ALERT: WALL IE config change or login by unapproved user — investiga
 Prerequisites: WALL IE syslog forwarding enabled with @user.name populated
 
 Create via: Monitors > New Monitor > Log Alert
+```
 
-#### Wireshark display filter — WALL IE admin sessions from unexpected source IPs:
+**Wireshark display filter — WALL IE admin sessions from unexpected source IPs:**
 
 http.host matches "wallie" and not ip.src in {<approved_admin_subnet>}
 
 tshark:
 
+```text
 tshark -r wallie_admin.pcap -Y 'http.host matches "wallie" and not ip.src in {<approved_admin_subnet>}' -T fields -e frame.time -e ip.src -e http.request.uri -e http.user_agent
+```
 
 # Threat Actor Profile
 
-#### The most likely adversary profile is a resourced, patient, network-adjacent actor — typical of nation-state OT reconnaissance or sophisticated criminal groups targeting manufacturing supply chains. Sweet32 is a collection attack that rewards sustained vantage points over opportunistic scans; the actor must hold a network position long enough to accumulate billions of encrypted blocks, which is realistic only where initial access to the OT-adjacent network is already established. Sophistication: moderate to high. Access path: VPN credential compromise of a remote engineering session, jump-host compromise in the corporate IT tier, or on-site vantage via a compromised factory-floor workstation. TTPs: passive capture of long-lived TLS/IPSec sessions, offline Sweet32 analysis, replay of recovered session tokens or PSKs against the WALL IE itself.
+**The most likely adversary profile is a resourced, patient, network-adjacent actor — typical of nation-state OT reconnaissance or sophisticated criminal groups targeting manufacturing supply chains. Sweet32 is a collection attack that rewards sustained vantage points over opportunistic scans; the actor must hold a network position long enough to accumulate billions of encrypted blocks, which is realistic only where initial access to the OT-adjacent network is already established. Sophistication: moderate to high. Access path: VPN credential compromise of a remote engineering session, jump-host compromise in the corporate IT tier, or on-site vantage via a compromised factory-floor workstation. TTPs: passive capture of long-lived TLS/IPSec sessions, offline Sweet32 analysis, replay of recovered session tokens or PSKs against the WALL IE itself.**
 
-#### A secondary actor class is the automotive-supply-chain-aware threat actor with explicit interest in IP that traverses engineering VPN tunnels — such an adversary may specifically target WALL IE deployments at Tier-1 or Tier-2 suppliers to OEMs. Any IOC that includes traffic capture infrastructure near WALL IE IPs on supplier networks should be treated as high priority.
+**A secondary actor class is the automotive-supply-chain-aware threat actor with explicit interest in IP that traverses engineering VPN tunnels — such an adversary may specifically target WALL IE deployments at Tier-1 or Tier-2 suppliers to OEMs. Any IOC that includes traffic capture infrastructure near WALL IE IPs on supplier networks should be treated as high priority.**
 
 The third actor class is a commodity mass scanner fingerprinting WALL IE devices at random via Shodan/Censys. These actors are unlikely to run Sweet32 operationally but can provide reconnaissance data to a more capable downstream actor.
 
 # Data Sources Required
 
-Network: full-packet PCAP on OT SPAN/TAP covering WALL IE management and IPSec traffic, NetFlow from the OT DMZ firewall, firewall TLS-decrypt logs where available, IKE/ESP counter exports from the WALL IE device SNMP agent.
+***Network:*** full-packet PCAP on OT SPAN/TAP covering WALL IE management and IPSec traffic, NetFlow from the OT DMZ firewall, firewall TLS-decrypt logs where available, IKE/ESP counter exports from the WALL IE device SNMP agent.
 
-Endpoint: CrowdStrike Falcon telemetry on every engineering workstation and admin jump host that has accessed a WALL IE; Windows Security Events (IDs 4624, 4625, 4688, 4984, 5156, 5451, 5453); Sysmon Event IDs 1, 3, 7, 11, 22 where deployed.
+***Endpoint:*** CrowdStrike Falcon telemetry on every engineering workstation and admin jump host that has accessed a WALL IE; Windows Security Events (IDs 4624, 4625, 4688, 4984, 5156, 5451, 5453); Sysmon Event IDs 1, 3, 7, 11, 22 where deployed.
 
-#### OT/ICS: Claroty CTD, Dragos Platform, Nozomi Networks, Armis, Tenable OT, Forescout eyeInspect — asset inventories, connection logs, baseline deviation reports, and firmware version histories for all WALL IE devices.
+**OT/ICS: Claroty CTD, Dragos Platform, Nozomi Networks, Armis, Tenable OT, Forescout eyeInspect — asset inventories, connection logs, baseline deviation reports, and firmware version histories for all WALL IE devices.**
 
 Device/vendor: WALL IE device syslog (if forwarded), switch interface counters from the OT distribution switch, change-ticket system exports for the hunt window.
 
@@ -466,7 +543,9 @@ DestinationIp|cidr: '<wallie_subnet>'
 
 weak_cipher:
 
+```text
 tls.cipher_suite|contains:
+```
 
 \- '3DES'
 
@@ -616,6 +695,7 @@ rule Sweet32_Exploit_Tooling
 
 meta:
 
+```text
 description = "Detects Sweet32 (CVE-2016-2183) birthday-bound attack PoC tooling"
 
 author = "1898 & Co. Managed Threat Protection and Response for OT"
@@ -623,6 +703,7 @@ author = "1898 & Co. Managed Threat Protection and Response for OT"
 date = "2026-04-22"
 
 reference = "<https://sweet32.info/>"
+```
 
 strings:
 
@@ -656,6 +737,7 @@ rule Helmholz_Firmware_Image
 
 meta:
 
+```text
 description = "Identifies Helmholz WALL IE firmware images for inventory cross-check"
 
 author = "1898 & Co. Managed Threat Protection and Response for OT"
@@ -663,6 +745,7 @@ author = "1898 & Co. Managed Threat Protection and Response for OT"
 date = "2026-04-22"
 
 reference = "<https://certvde.com/en/advisories/VDE-2026-015/>"
+```
 
 strings:
 
@@ -690,6 +773,7 @@ rule IPSec_3DES_Policy
 
 meta:
 
+```text
 description = "Detects IPSec peer configurations permitting 3DES transforms (Sweet32 precondition)"
 
 author = "1898 & Co. Managed Threat Protection and Response for OT"
@@ -697,6 +781,7 @@ author = "1898 & Co. Managed Threat Protection and Response for OT"
 date = "2026-04-22"
 
 reference = "<https://certvde.com/en/advisories/VDE-2026-015/>"
+```
 
 strings:
 
@@ -726,6 +811,7 @@ rule Credential_Dump_Tool_Memory_Artifacts
 
 meta:
 
+```text
 description = "Detects memory-resident artifacts of common Windows LSASS credential dumping tools"
 
 author = "1898 & Co. Managed Threat Protection and Response for OT"
@@ -733,6 +819,7 @@ author = "1898 & Co. Managed Threat Protection and Response for OT"
 date = "2026-04-22"
 
 reference = "<https://attack.mitre.org/techniques/T1003/>"
+```
 
 strings:
 
@@ -808,43 +895,42 @@ Baseline deviation: engineering traffic volume over an IPSec tunnel significantl
 
 # False Positive Baseline
 
-#### 1. Vulnerability scanners — internal security tooling (Nessus, Tenable OT, Qualys, Rapid7) deliberately probing legacy cipher support; suppress hits whose source IP is on <approved_scanner_subnet>.
+**1. Vulnerability scanners — internal security tooling (Nessus, Tenable OT, Qualys, Rapid7) deliberately probing legacy cipher support; suppress hits whose source IP is on <approved_scanner_subnet>.**
 
-#### 2. Authorized legacy peer — a small number of legacy IPSec peers may still require 3DES for interoperability during a documented migration window; suppress hits whose peer IP and expiration date are on <legacy_peer_register>.
+**2. Authorized legacy peer — a small number of legacy IPSec peers may still require 3DES for interoperability during a documented migration window; suppress hits whose peer IP and expiration date are on <legacy_peer_register>.**
 
-#### 3. Engineering workstation browser sessions — OT engineers legitimately open the WALL IE web console; these must originate from <approved_admin_subnet> and must not negotiate 3DES after the firmware upgrade is applied.
+**3. Engineering workstation browser sessions — OT engineers legitimately open the WALL IE web console; these must originate from <approved_admin_subnet> and must not negotiate 3DES after the firmware upgrade is applied.**
 
-#### 4. Integrator diagnostic access — contracted integrators periodically log in to WALL IE units; document their source IPs, time windows, and user accounts on <integrator_access_register> to suppress.
+**4. Integrator diagnostic access — contracted integrators periodically log in to WALL IE units; document their source IPs, time windows, and user accounts on <integrator_access_register> to suppress.**
 
-#### 5. Emergency break-glass admin accounts — a short list of IR-use-only accounts may trigger SIGMA Rule 2 / Monitor H4; maintain an exclusion list and log each use for the incident record.
+**5. Emergency break-glass admin accounts — a short list of IR-use-only accounts may trigger SIGMA Rule 2 / Monitor H4; maintain an exclusion list and log each use for the incident record.**
 
-#### 6. Asset-inventory lag — a newly upgraded device may still appear on old firmware in cached inventory exports for up to 24 hours after patching; suppress alerts for devices whose change ticket was completed within the prior 24 hours.
+**6. Asset-inventory lag — a newly upgraded device may still appear on old firmware in cached inventory exports for up to 24 hours after patching; suppress alerts for devices whose change ticket was completed within the prior 24 hours.**
 
 # Escalation Criteria
 
-#### 1. Any SIGMA Rule 1 match — 3DES TLS handshake to <wallie_subnet> — combined with session duration exceeding 30 minutes triggers immediate IR engagement.
+**1. Any SIGMA Rule 1 match — 3DES TLS handshake to <wallie_subnet> — combined with session duration exceeding 30 minutes triggers immediate IR engagement.**
 
-#### 2. Any SIGMA Rule 2 match — 3DES-transform IPSec SA on a WALL IE peer — triggers immediate remediation of the peer policy and IR review of recent tunnel activity.
+**2. Any SIGMA Rule 2 match — 3DES-transform IPSec SA on a WALL IE peer — triggers immediate remediation of the peer policy and IR review of recent tunnel activity.**
 
-3. Any WALL IE admin login from a source IP not on <approved_admin_subnet> triggers IR engagement and containment of the admin jump host.
+3\. Any WALL IE admin login from a source IP not on <approved_admin_subnet> triggers IR engagement and containment of the admin jump host.
 
-4. Any WALL IE configuration change without a matching change ticket triggers IR engagement.
+4\. Any WALL IE configuration change without a matching change ticket triggers IR engagement.
 
-#### 5. Any Snort/Suricata Rule 2 match — ESP tunnel to WALL IE exceeding the Sweet32 throughput threshold — triggers PCAP preservation and PSK/certificate rotation on the affected tunnel.
+**5. Any Snort/Suricata Rule 2 match — ESP tunnel to WALL IE exceeding the Sweet32 throughput threshold — triggers PCAP preservation and PSK/certificate rotation on the affected tunnel.**
 
-6. Any YARA hit on Sweet32_Exploit_Tooling against a production admin workstation (file system, browser cache, or memory) triggers IR.
+6\. Any YARA hit on Sweet32_Exploit_Tooling against a production admin workstation (file system, browser cache, or memory) triggers IR.
 
-7. Any YARA hit on Helmholz_Firmware_Image against an unexpected staging path (outside the approved firmware repository) triggers IR and image integrity verification.
+7\. Any YARA hit on Helmholz_Firmware_Image against an unexpected staging path (outside the approved firmware repository) triggers IR and image integrity verification.
 
-8. Any YARA hit on IPSec_3DES_Policy against a production VPN peer configuration triggers immediate configuration remediation.
+8\. Any YARA hit on IPSec_3DES_Policy against a production VPN peer configuration triggers immediate configuration remediation.
 
-9. Any YARA hit on Credential_Dump_Tool_Memory_Artifacts against any LSASS-hosting process on the WALL IE admin jump host triggers IR.
+9\. Any YARA hit on Credential_Dump_Tool_Memory_Artifacts against any LSASS-hosting process on the WALL IE admin jump host triggers IR.
 
-10. Any confirmed WALL IE asset still on firmware below 1.10.232 beyond the patch-target date (T+30 days from advisory publication, i.e., 2026-05-21) triggers Ops escalation for patch-state exception review.
+10\. Any confirmed WALL IE asset still on firmware below 1.10.232 beyond the patch-target date (T+30 days from advisory publication, i.e., 2026-05-21) triggers Ops escalation for patch-state exception review.
 
 # Hunt Completion Criteria and Reporting
 
 The hunt is complete when all of the following are true: every WALL IE asset in the inventory has been queried across CrowdStrike, Datadog, Wireshark PCAPs, SNMP, and every OT monitoring platform for the full 180-day window; every finding from Sections 6 and 8 has been triaged as confirmed, suppressed, or escalated; firmware versions across the inventory have been reconciled with change tickets; and the SIGMA, Snort/Suricata, and YARA rules in Section 5 have been deployed to production detection tooling.
 
 The hunt report must contain: an inventory of affected WALL IE assets with current firmware versions, a timeline of 3DES handshake and IPSec SA events per asset for the hunt window, a table of suppressions applied with justifications, a list of escalated incidents with correlation IDs, signed-off change records for the firmware upgrade to 1.10.232 once performed, and a residual-risk statement for any asset that cannot be upgraded in the next maintenance window.
-
