@@ -21,11 +21,11 @@ Collection Queries
 CrowdStrike Falcon — Trivy child process collection (any process spawned by trivy that is not expected scanner output):
 
 ```text
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| ParentBaseFileName = "trivy"
+| ParentBaseFileName = "trivy"
 
-\| table(\[ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, SHA256HashData, timestamp\])
+| table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, SHA256HashData, timestamp])
 
 ```
 CrowdStrike Falcon — All trivy process executions with hash for comparison against known-good (v0.69.3 and earlier):
@@ -33,13 +33,13 @@ CrowdStrike Falcon — All trivy process executions with hash for comparison aga
 ```text
 // Collect all trivy invocations to build a hash inventory; rarest hashes first indicate anomalies
 
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| FileName = "trivy"
+| FileName = "trivy"
 
-\| groupBy(\[ComputerName, FileName, SHA256HashData, ImageFileName\], function=count(), limit=100000)
+| groupBy([ComputerName, FileName, SHA256HashData, ImageFileName], function=count(), limit=100000)
 
-\| sort(\_count, order=asc, limit=50)
+| sort(_count, order=asc, limit=50)
 
 ```
 CrowdStrike Falcon — Runner.Worker process spawning unexpected children (GitHub Actions self-hosted runners):
@@ -47,11 +47,11 @@ CrowdStrike Falcon — Runner.Worker process spawning unexpected children (GitHu
 ```text
 // Runner.Worker is the GitHub Actions runner host process; unexpected children indicate payload execution
 
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| ParentBaseFileName = "Runner.Worker"
+| ParentBaseFileName = "Runner.Worker"
 
-\| table(\[ComputerName, FileName, CommandLine, ParentBaseFileName, SHA256HashData, ImageFileName, timestamp\])
+| table([ComputerName, FileName, CommandLine, ParentBaseFileName, SHA256HashData, ImageFileName, timestamp])
 
 tcpdump — Capture all traffic to/from CI/CD runner host during a timed scan window:
 
@@ -63,17 +63,17 @@ sudo tcpdump -i eth0 -w /tmp/trivy_hunt\_%Y%m%d\_%H%M%S.pcap -G 300 -C 100 \\
 ```text
 YARA file-system scan for TeamPCP Cloud Stealer Python script on disk:
 
-yara -r -p 4 /tmp/TeamPCP_Cloud_Stealer_Script.yar /home /tmp /var /opt \>\> /tmp/yara_hits_h1.txt 2\>&1
+yara -r -p 4 /tmp/TeamPCP_Cloud_Stealer_Script.yar /home /tmp /var /opt >> /tmp/yara_hits_h1.txt 2>&1
 
 ```
 Windows Event ID collection (Windows-hosted runners only) — Process creation for trivy:
 
 ```powershell
-Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=(Get-Date).AddDays(-3)} \|
+Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=(Get-Date).AddDays(-3)} |
 
-Where-Object { \$\_.Properties\[5\].Value -match 'trivy' -or \$\_.Properties\[9\].Value -match 'trivy' } \|
+Where-Object { \$_.Properties[5].Value -match 'trivy' -or \$_.Properties[9].Value -match 'trivy' } |
 
-Select-Object TimeCreated,@{N='NewProcess';E={\$\_.Properties\[5\].Value}},@{N='CmdLine';E={\$\_.Properties\[8\].Value}},@{N='ParentProcess';E={\$\_.Properties\[13\].Value}} \|
+Select-Object TimeCreated,@{N='NewProcess';E={\$_.Properties[5].Value}},@{N='CmdLine';E={\$_.Properties[8].Value}},@{N='ParentProcess';E={\$_.Properties[13].Value}} |
 
 Export-Csv /tmp/trivy_proc_events.csv -NoTypeInformation
 
@@ -111,23 +111,23 @@ Analysis Queries
 CrowdStrike Falcon — Frequency analysis: most common trivy parent processes (unexpected parents indicate compromised runners):
 
 ```text
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| FileName = "trivy"
+| FileName = "trivy"
 
-\| top(\[ComputerName, ParentBaseFileName, ImageFileName\], limit=50)
+| top([ComputerName, ParentBaseFileName, ImageFileName], limit=50)
 
 ```
 CrowdStrike Falcon — Rarity analysis: least common trivy SHA256 hashes (rare hashes indicate malicious binary):
 
 ```text
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| FileName = "trivy"
+| FileName = "trivy"
 
-\| groupBy(\[SHA256HashData, ImageFileName\], function=count(), limit=100000)
+| groupBy([SHA256HashData, ImageFileName], function=count(), limit=100000)
 
-\| sort(\_count, order=asc, limit=20)
+| sort(_count, order=asc, limit=20)
 
 ```
 CrowdStrike Falcon — Timeline: all process events on hosts that ran trivy during exposure window:
@@ -135,17 +135,17 @@ CrowdStrike Falcon — Timeline: all process events on hosts that ran trivy duri
 ```text
 // time range: 2026-03-19T17:43:00Z to 2026-03-19T23:13:00Z
 
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| join(
+| join(
 
 query={
 
-\#event_simpleName=ProcessRollup2
+#event_simpleName=ProcessRollup2
 
-\| FileName = "trivy"
+| FileName = "trivy"
 
-\| groupBy(\[aid, ComputerName\], function=count(), limit=100000)
+| groupBy([aid, ComputerName], function=count(), limit=100000)
 
 },
 
@@ -153,11 +153,11 @@ query={
 field=aid,
 
 ```text
-include=\[ComputerName\]
+include=[ComputerName]
 
 )
 
-\| table(\[ComputerName, FileName, CommandLine, ParentBaseFileName, SHA256HashData, timestamp\])
+| table([ComputerName, FileName, CommandLine, ParentBaseFileName, SHA256HashData, timestamp])
 
 ```
 Wireshark display filter — Connections to TeamPCP C2 from runner PCAP:
@@ -167,7 +167,7 @@ ip.addr == 45.148.10.212 && tcp.port == 443
 ```text
 // tshark equivalent:
 
-tshark -r /tmp/trivy_hunt\_\*.pcap -Y "ip.addr == 45.148.10.212 && tcp.port == 443" \\
+tshark -r /tmp/trivy_hunt_\*.pcap -Y "ip.addr == 45.148.10.212 && tcp.port == 443" \\
 
 ```
 -T fields -e frame.time -e ip.src -e ip.dst -e tcp.port -e http2.headers.method 2\>/dev/null
@@ -179,7 +179,7 @@ Datadog Log Analytics — Trivy execution frequency by host and namespace:
 
 // Analytics: Timeseries view, group by @kubernetes.namespace_name; time range: 2026-03-19T17:00Z to 2026-03-20T00:00Z
 
-// Equivalent to CQL: groupBy(\[namespace, pod\], function=count(), limit=100000)
+// Equivalent to CQL: groupBy([namespace, pod], function=count(), limit=100000)
 
 ```
 Datadog Monitor — Alert on trivy spawning unexpected child process (H1):
@@ -191,7 +191,7 @@ Query: source:kubernetes (message:"python3" OR message:"curl" OR message:"wget")
 
 Evaluation window: last 5 minutes
 
-Alert condition: count \> 0
+Alert condition: count > 0
 
 Message: "ALERT: Possible malicious Trivy child process detected in pod @kubernetes.pod_name — immediate pipeline suspension required @security-oncall"
 
@@ -203,7 +203,7 @@ Windows Event Log analysis — Parent-child process chain from trivy (Windows ru
 \$trivyProcs = Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=(Get-Date).AddDays(-3)} \|
 
 ```powershell
-Where-Object { \$\_.Properties\[5\].Value -match 'trivy' }
+Where-Object { \$_.Properties[5].Value -match 'trivy' }
 
 ```
 \$trivyProcs \| ForEach-Object {
@@ -211,11 +211,11 @@ Where-Object { \$\_.Properties\[5\].Value -match 'trivy' }
 \$pid = \$\_.Properties\[6\].Value
 
 ```powershell
-Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=\$\_.TimeCreated; EndTime=\$\_.TimeCreated.AddSeconds(10)} \|
+Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=\$_.TimeCreated; EndTime=\$_.TimeCreated.AddSeconds(10)} |
 
-Where-Object { \$\_.Properties\[13\].Value -match \[regex\]::Escape(\$pid) } \|
+Where-Object { \$_.Properties[13].Value -match [regex]::Escape(\$pid) } |
 
-Select-Object TimeCreated,@{N='ChildProcess';E={\$\_.Properties\[5\].Value}},@{N='CmdLine';E={\$\_.Properties\[8\].Value}}
+Select-Object TimeCreated,@{N='ChildProcess';E={\$_.Properties[5].Value}},@{N='CmdLine';E={\$_.Properties[8].Value}}
 
 ```
 } \| Export-Csv /tmp/trivy_children.csv -NoTypeInformation
@@ -243,13 +243,13 @@ Collection Queries
 CrowdStrike Falcon — Python processes with /proc references in command line (Linux runners):
 
 ```text
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| FileName = "python3"
+| FileName = "python3"
 
-\| CommandLine = /\\proc\\/i
+| CommandLine = /\\proc\\/i
 
-\| table(\[ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, SHA256HashData, timestamp\])
+| table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, SHA256HashData, timestamp])
 
 ```
 CrowdStrike Falcon — Any process on runner hosts spawned by trivy or Runner.Worker within 60 seconds of trivy execution:
@@ -259,31 +259,31 @@ CrowdStrike Falcon — Any process on runner hosts spawned by trivy or Runner.Wo
 
 // Focus on python3, sh, bash, curl, wget spawned directly after trivy
 
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| in(FileName, values=\["python3","python","sh","bash","curl","wget"\])
+| in(FileName, values=["python3","python","sh","bash","curl","wget"])
 
-\| ParentBaseFileName = "trivy"
+| ParentBaseFileName = "trivy"
 
-\| table(\[ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, SHA256HashData, timestamp\])
+| table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, SHA256HashData, timestamp])
 
 ```
 CrowdStrike Falcon — CriticalFile events on /proc paths (if Linux file telemetry is enabled):
 
 ```text
-\#event_simpleName = "CriticalFile"
+#event_simpleName = "CriticalFile"
 
-\| TargetFileName = /\\proc\\\[0-9\]+\\mem/i
+| TargetFileName = /\\proc\\[0-9]+\\mem/i
 
-\| table(\[ComputerName, TargetFileName, ContextProcessId, timestamp\])
+| table([ComputerName, TargetFileName, ContextProcessId, timestamp])
 
-\| join(
+| join(
 
-query={#event_simpleName=ProcessRollup2 \| groupBy(\[aid,TargetProcessId\], function=selectLast(\[ImageFileName,FileName,CommandLine,AuthenticationId\]), limit=100000)},
+query={#event_simpleName=ProcessRollup2 | groupBy([aid,TargetProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId]), limit=100000)},
 
-field=\[aid,ContextProcessId\], key=\[aid,TargetProcessId\],
+field=[aid,ContextProcessId], key=[aid,TargetProcessId],
 
-include=\[ImageFileName,FileName,CommandLine,AuthenticationId\]
+include=[ImageFileName,FileName,CommandLine,AuthenticationId]
 
 )
 
@@ -299,17 +299,17 @@ sudo tcpdump -i lo -w /tmp/runner_local\_%Y%m%d.pcap -G 300 -C 50 \\
 ```text
 YARA file-system scan for TeamPCP Python stealer script artifacts:
 
-yara -r -p 4 /tmp/TeamPCP_Cloud_Stealer_Script.yar / --exclude-dirs /proc --exclude-dirs /sys \>\> /tmp/yara_hits_h2.txt 2\>&1
+yara -r -p 4 /tmp/TeamPCP_Cloud_Stealer_Script.yar / --exclude-dirs /proc --exclude-dirs /sys >> /tmp/yara_hits_h2.txt 2>&1
 
 ```
 Windows Event ID collection (Windows runners with Sysmon) — File access on sensitive paths:
 
 ```powershell
-Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; Id=10; StartTime=(Get-Date).AddDays(-3)} \|
+Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; Id=10; StartTime=(Get-Date).AddDays(-3)} |
 
-Where-Object { \$\_.Properties\[5\].Value -match 'Runner.Worker' -or \$\_.Properties\[9\].Value -match 'Runner.Worker' } \|
+Where-Object { \$_.Properties[5].Value -match 'Runner.Worker' -or \$_.Properties[9].Value -match 'Runner.Worker' } |
 
-Select-Object TimeCreated,@{N='SourceProcess';E={\$\_.Properties\[5\].Value}},@{N='TargetProcess';E={\$\_.Properties\[9\].Value}} \|
+Select-Object TimeCreated,@{N='SourceProcess';E={\$_.Properties[5].Value}},@{N='TargetProcess';E={\$_.Properties[9].Value}} |
 
 Export-Csv /tmp/runner_proc_access.csv -NoTypeInformation
 
@@ -341,13 +341,13 @@ Analysis Queries
 CrowdStrike Falcon — Frequency analysis of Python processes launched by runner-related parents:
 
 ```text
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| FileName = "python3"
+| FileName = "python3"
 
-\| groupBy(\[ComputerName, ParentBaseFileName, CommandLine\], function=count(), limit=100000)
+| groupBy([ComputerName, ParentBaseFileName, CommandLine], function=count(), limit=100000)
 
-\| sort(\_count, order=asc, limit=50)
+| sort(_count, order=asc, limit=50)
 
 ```
 CrowdStrike Falcon — Timeline of events on hosts where python3 accessed /proc:
@@ -355,15 +355,15 @@ CrowdStrike Falcon — Timeline of events on hosts where python3 accessed /proc:
 ```text
 // Start with hosts identified from CriticalFile or ProcessRollup2 /proc findings, then pull all events
 
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| ComputerName = "\<identified_host\>"
+| ComputerName = "<identified_host>"
 
-\| ContextTimeStamp \> "2026-03-19T17:00:00Z"
+| ContextTimeStamp > "2026-03-19T17:00:00Z"
 
-\| ContextTimeStamp \< "2026-03-20T00:00:00Z"
+| ContextTimeStamp < "2026-03-20T00:00:00Z"
 
-\| table(\[ComputerName, FileName, CommandLine, ParentBaseFileName, SHA256HashData, ContextTimeStamp\])
+| table([ComputerName, FileName, CommandLine, ParentBaseFileName, SHA256HashData, ContextTimeStamp])
 
 ```
 Wireshark — Correlate /proc access timing with outbound connection bursts:
@@ -377,7 +377,7 @@ frame.time_relative \>= 0 && ip.dst != 10.0.0.0/8 && tcp.flags.syn == 1
 ```text
 // tshark:
 
-tshark -r /tmp/runner\_\*.pcap -Y "ip.dst != 10.0.0.0/8 and tcp.flags.syn == 1" \\
+tshark -r /tmp/runner_\*.pcap -Y "ip.dst != 10.0.0.0/8 and tcp.flags.syn == 1" \\
 
 ```
 -T fields -e frame.time_epoch -e ip.src -e ip.dst -e tcp.dstport 2\>/dev/null \| head -100
@@ -401,7 +401,7 @@ Query: source:kubernetes (message:"/proc/" AND message:"mem") @kubernetes.namesp
 
 Evaluation window: last 5 minutes
 
-Alert condition: count \> 0
+Alert condition: count > 0
 
 Message: "ALERT: Possible /proc/pid/mem access detected in Kubernetes pod @kubernetes.pod_name — potential in-memory secret extraction in progress @security-oncall"
 
@@ -411,7 +411,7 @@ Prerequisites: Kubernetes pod stdout/stderr logs must be collected by the Datado
 Datadog Audit Trail — Check for any secret management API calls from CI/CD service accounts:
 
 ```text
-// Access via Datadog Admin \> Audit Trail or GET /api/v2/audit/events?filter\[query\]=...
+// Access via Datadog Admin > Audit Trail or GET /api/v2/audit/events?filter[query]=...
 
 source:datadog @evt.category:user_access @evt.name:secret_get
 
@@ -449,31 +449,31 @@ Collection Queries
 CrowdStrike Falcon — Outbound connections to TeamPCP C2 IP with process context:
 
 ```text
-\#event_simpleName = "NetworkConnectIP4"
+#event_simpleName = "NetworkConnectIP4"
 
-\| RemoteAddressIP4 = "45.148.10.212"
+| RemoteAddressIP4 = "45.148.10.212"
 
-\| join(
+| join(
 
-query={#event_simpleName=ProcessRollup2 \| groupBy(\[aid,RawProcessId\], function=selectLast(\[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName\]), limit=100000)},
+query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]), limit=100000)},
 
-field=\[aid,RawProcessId\],
+field=[aid,RawProcessId],
 
-include=\[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName\]
+include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]
 
 )
 
-\| table(\[ComputerName, FileName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName, timestamp\])
+| table([ComputerName, FileName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName, timestamp])
 
 ```
 CrowdStrike Falcon — DNS queries for typosquatted aquasecurtiy domain:
 
 ```text
-\#event_simpleName = "DnsRequest"
+#event_simpleName = "DnsRequest"
 
-\| DomainName = /aquasecurtiy/i
+| DomainName = /aquasecurtiy/i
 
-\| table(\[ComputerName, DomainName, IpAddress, RequestType, timestamp\])
+| table([ComputerName, DomainName, IpAddress, RequestType, timestamp])
 
 ```
 CrowdStrike Falcon — Outbound HTTPS connections to any non-RFC-1918 address from python3:
@@ -481,23 +481,23 @@ CrowdStrike Falcon — Outbound HTTPS connections to any non-RFC-1918 address fr
 ```text
 // Capture all external connections initiated by Python processes — broaden scope if C2 rotates
 
-\#event_simpleName = "NetworkConnectIP4"
+#event_simpleName = "NetworkConnectIP4"
 
-\| join(
+| join(
 
-query={#event_simpleName=ProcessRollup2 \| groupBy(\[aid,RawProcessId\], function=selectLast(\[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName\]), limit=100000)},
+query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]), limit=100000)},
 
-field=\[aid,RawProcessId\],
+field=[aid,RawProcessId],
 
-include=\[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName\]
+include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]
 
 )
 
-\| FileName = "python3"
+| FileName = "python3"
 
-\| not cidr(RemoteAddressIP4, subnet=\["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16","127.0.0.0/8"\])
+| not cidr(RemoteAddressIP4, subnet=["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16","127.0.0.0/8"])
 
-\| table(\[ComputerName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName, timestamp\])
+| table([ComputerName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName, timestamp])
 
 tcpdump — Targeted capture on TeamPCP C2 IP and typosquatted domain on runner host:
 
@@ -509,13 +509,13 @@ sudo tcpdump -i eth0 -w /tmp/c2_hunt\_%Y%m%d\_%H%M%S.pcap -G 300 -C 100 \\
 Windows Event ID collection (Windows runners) — Network connections from python:
 
 ```powershell
-Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156; StartTime=(Get-Date).AddDays(-3)} \|
+Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156; StartTime=(Get-Date).AddDays(-3)} |
 
-Where-Object { \$\_.Properties\[1\].Value -match 'python' } \|
+Where-Object { \$_.Properties[1].Value -match 'python' } |
 
-Select-Object TimeCreated,@{N='Application';E={\$\_.Properties\[1\].Value}},@{N='DestAddr';E={\$\_.Properties\[5\].Value}},@{N='DestPort';E={\$\_.Properties\[6\].Value}} \|
+Select-Object TimeCreated,@{N='Application';E={\$_.Properties[1].Value}},@{N='DestAddr';E={\$_.Properties[5].Value}},@{N='DestPort';E={\$_.Properties[6].Value}} |
 
-Where-Object { \$\_.DestAddr -notmatch '^(10\\\|172\\(1\[6-9\]\|2\[0-9\]\|3\[01\])\\\|192\\168\\)' } \|
+Where-Object { \$_.DestAddr -notmatch '^(10\\|172\\(1[6-9]|2[0-9]|3[01])\\|192\\168\\)' } |
 
 Export-Csv /tmp/python_network_events.csv -NoTypeInformation
 
@@ -549,35 +549,35 @@ Analysis Queries
 CrowdStrike Falcon — Frequency analysis: all external destinations contacted by Python processes on runner hosts:
 
 ```text
-\#event_simpleName = "NetworkConnectIP4"
+#event_simpleName = "NetworkConnectIP4"
 
-\| join(
+| join(
 
-query={#event_simpleName=ProcessRollup2 \| groupBy(\[aid,RawProcessId\], function=selectLast(\[FileName,CommandLine,ParentBaseFileName\]), limit=100000)},
+query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([FileName,CommandLine,ParentBaseFileName]), limit=100000)},
 
-field=\[aid,RawProcessId\],
+field=[aid,RawProcessId],
 
-include=\[FileName,CommandLine,ParentBaseFileName\]
+include=[FileName,CommandLine,ParentBaseFileName]
 
 )
 
-\| FileName = "python3"
+| FileName = "python3"
 
-\| not cidr(RemoteAddressIP4, subnet=\["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"\])
+| not cidr(RemoteAddressIP4, subnet=["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"])
 
-\| groupBy(\[RemoteAddressIP4, RemotePort, ComputerName\], function=count(), limit=100000)
+| groupBy([RemoteAddressIP4, RemotePort, ComputerName], function=count(), limit=100000)
 
-\| sort(\_count, order=asc, limit=50)
+| sort(_count, order=asc, limit=50)
 
 ```
 CrowdStrike Falcon — DNS rarity analysis for unusual domains queried by runner hosts:
 
 ```text
-\#event_simpleName = "DnsRequest"
+#event_simpleName = "DnsRequest"
 
-\| groupBy(\[DomainName, ComputerName\], function=count(), limit=100000)
+| groupBy([DomainName, ComputerName], function=count(), limit=100000)
 
-\| sort(\_count, order=asc, limit=100)
+| sort(_count, order=asc, limit=100)
 
 // Look for single-occurrence domain queries — high suspicion for C2 beacons
 
@@ -595,7 +595,7 @@ tls.handshake.extensions_server_name contains "aquasecurtiy"
 ```text
 // tshark:
 
-tshark -r /tmp/c2_hunt\_\*.pcap \\
+tshark -r /tmp/c2_hunt_\*.pcap \\
 
 ```
 -Y "tls.handshake.extensions_server_name contains \\aquasecurtiy\\" \\
@@ -635,7 +635,7 @@ Query: @network.destination.ip:45.148.10.212
 ```text
 Evaluation window: last 5 minutes
 
-Alert condition: count \> 0
+Alert condition: count > 0
 
 Message: "ALERT: Outbound connection to TeamPCP C2 IP 45.148.10.212 detected from @host — immediate network isolation of runner host required @security-oncall"
 
@@ -653,11 +653,11 @@ source:datadog @evt.category:api_key_management @evt.name:api_key_created
 Windows Event Log — DNS resolution events for typosquatted domain (Windows runners):
 
 ```powershell
-Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-DNS-Client/Operational'; Id=3008; StartTime=(Get-Date).AddDays(-3)} \|
+Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-DNS-Client/Operational'; Id=3008; StartTime=(Get-Date).AddDays(-3)} |
 
-Where-Object { \$\_.Message -match 'aquasecurtiy' } \|
+Where-Object { \$_.Message -match 'aquasecurtiy' } |
 
-Select-Object TimeCreated,@{N='DomainName';E={\$\_.Properties\[0\].Value}} \|
+Select-Object TimeCreated,@{N='DomainName';E={\$_.Properties[0].Value}} |
 
 Export-Csv /tmp/dns_aquasecurtiy.csv -NoTypeInformation
 
@@ -671,23 +671,23 @@ Collection Queries
 CrowdStrike Falcon — HTTPS connections to api.github.com from Python processes (fallback C2 path):
 
 ```text
-\#event_simpleName = "DnsRequest"
+#event_simpleName = "DnsRequest"
 
-\| DomainName = "api.github.com"
+| DomainName = "api.github.com"
 
-\| join(
+| join(
 
-query={#event_simpleName=ProcessRollup2 \| groupBy(\[aid,TargetProcessId\], function=selectLast(\[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName\]), limit=100000)},
+query={#event_simpleName=ProcessRollup2 | groupBy([aid,TargetProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]), limit=100000)},
 
-field=\[aid,ContextProcessId\], key=\[aid,TargetProcessId\],
+field=[aid,ContextProcessId], key=[aid,TargetProcessId],
 
-include=\[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName\]
+include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]
 
 )
 
-\| FileName = "python3"
+| FileName = "python3"
 
-\| table(\[ComputerName, DomainName, FileName, CommandLine, ParentBaseFileName, timestamp\])
+| table([ComputerName, DomainName, FileName, CommandLine, ParentBaseFileName, timestamp])
 
 tcpdump — Capture GitHub API traffic from runner host during exposure window:
 
@@ -699,11 +699,11 @@ sudo tcpdump -i eth0 -w /tmp/github_api\_%Y%m%d\_%H%M%S.pcap -G 300 -C 50 \\
 Windows Event ID collection (Windows runners) — GitHub API connections from python processes:
 
 ```powershell
-Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156; StartTime=(Get-Date).AddDays(-3)} \|
+Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156; StartTime=(Get-Date).AddDays(-3)} |
 
-Where-Object { \$\_.Properties\[5\].Value -eq '140.82.114.5' -or \$\_.Properties\[5\].Value -match '192\\30\\' } \|
+Where-Object { \$_.Properties[5].Value -eq '140.82.114.5' -or \$_.Properties[5].Value -match '192\\30\\' } |
 
-Select-Object TimeCreated,@{N='App';E={\$\_.Properties\[1\].Value}},@{N='DestIP';E={\$\_.Properties\[5\].Value}} \|
+Select-Object TimeCreated,@{N='App';E={\$_.Properties[1].Value}},@{N='DestIP';E={\$_.Properties[5].Value}} |
 
 Export-Csv /tmp/github_api_events.csv -NoTypeInformation
 
@@ -745,13 +745,13 @@ Analysis Queries
 CrowdStrike Falcon — GitHub API DNS query frequency analysis (runner hosts making unexpected queries to api.github.com):
 
 ```text
-\#event_simpleName = "DnsRequest"
+#event_simpleName = "DnsRequest"
 
-\| DomainName = "api.github.com"
+| DomainName = "api.github.com"
 
-\| groupBy(\[ComputerName, DomainName\], function=count(), limit=100000)
+| groupBy([ComputerName, DomainName], function=count(), limit=100000)
 
-\| sort(\_count, order=asc, limit=50)
+| sort(_count, order=asc, limit=50)
 
 ```
 Wireshark — TLS SNI analysis for GitHub API connections from runner PCAP:
@@ -761,7 +761,7 @@ tls.handshake.extensions_server_name == "api.github.com"
 ```text
 // tshark:
 
-tshark -r /tmp/github_api\_\*.pcap \\
+tshark -r /tmp/github_api_\*.pcap \\
 
 ```
 -Y "tls.handshake.extensions_server_name == \\api.github.com\\" \\
@@ -797,7 +797,7 @@ Query: source:github.audit @action:repo.create @data.repository:\*tpcp\*
 
 Evaluation window: last 15 minutes
 
-Alert condition: count \> 0
+Alert condition: count > 0
 
 Message: "ALERT: Repository matching 'tpcp-docs' pattern created in GitHub org by actor @actor — possible TeamPCP credential staging; revoke associated token and review audit log immediately @security-oncall"
 
@@ -913,7 +913,7 @@ id: b5e2d3f4-9c6a-4b8e-0d1f-2a3b4c5d6e7f
 
 status: stable
 
-description: Detects DNS resolution of scan.aquasecurtiy\[.\]org or the root domain aquasecurtiy\[.\]org — a typosquatted domain used as primary C2 in the TeamPCP Trivy supply chain attack. The misspelling of aquasecurity (missing the 'i' in security) is the key discriminator.
+description: Detects DNS resolution of scan.aquasecurtiy[.]org or the root domain aquasecurtiy[.]org — a typosquatted domain used as primary C2 in the TeamPCP Trivy supply chain attack. The misspelling of aquasecurity (missing the 'i' in security) is the key discriminator.
 
 references:
 
@@ -1039,7 +1039,7 @@ id: d7a4f5h6-1e8c-6d0a-2f3b-4c5d6e7f8a9b
 ```yaml
 status: experimental
 
-description: Detects Python processes opening files matching /proc/\[0-9\]+/mem or /proc/\[0-9\]+/maps, consistent with TeamPCP Cloud Stealer reading GitHub Actions Runner.Worker process memory to extract isSecret-flagged CI/CD secrets, bypassing platform-level secret masking.
+description: Detects Python processes opening files matching /proc/[0-9]+/mem or /proc/[0-9]+/maps, consistent with TeamPCP Cloud Stealer reading GitHub Actions Runner.Worker process memory to extract isSecret-flagged CI/CD secrets, bypassing platform-level secret masking.
 
 references:
 
@@ -1207,7 +1207,7 @@ any of (\$s1, \$s2) and \$s3 or
 
 // File-system scan command:
 
-yara -r -p 4 TeamPCP_Cloud_Stealer_Script.yar /home /tmp /var /opt /root --exclude-dirs /proc --exclude-dirs /sys \>\> yara_hits_disk.txt 2\>&1
+yara -r -p 4 TeamPCP_Cloud_Stealer_Script.yar /home /tmp /var /opt /root --exclude-dirs /proc --exclude-dirs /sys >> yara_hits_disk.txt 2>&1
 
 ```
 The following YARA rule targets TeamPCP Cloud Stealer indicators in the memory of running Python processes. The rule is structured to match residual heap strings that would be present if the stealer executed or was loaded but not yet unloaded. The condition requires co-occurrence of the target secret key with either the target process name or the C2 domain to reduce false positives against general Python security tooling that may reference isSecret or /proc in isolation.
@@ -1345,7 +1345,7 @@ condition:
 
 // Windows LSASS memory scan via YARA (requires SeDebugPrivilege):
 
-// Get-Process lsass \| ForEach-Object { & yara.exe -p 2 Credential_Dump_Tool_Memory_Artifacts.yar \$\_.Id 2\>\$null }
+// Get-Process lsass | ForEach-Object { & yara.exe -p 2 Credential_Dump_Tool_Memory_Artifacts.yar \$_.Id 2>\$null }
 
 // CrowdStrike RTR: execute via Real Time Response with SeDebugPrivilege-enabled custom script
 

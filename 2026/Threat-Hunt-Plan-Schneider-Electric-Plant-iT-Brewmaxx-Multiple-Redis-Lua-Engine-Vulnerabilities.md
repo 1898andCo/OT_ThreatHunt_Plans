@@ -21,45 +21,45 @@ Execution \| T1190 — Exploit Public-Facing Application \| Redis is network-acc
 #### CrowdStrike Falcon FQL — Process creation under Redis service (collect all child processes)
 
 ```text
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| ParentBaseFileName = /redis-server/i
+| ParentBaseFileName = /redis-server/i
 
-\| table(\[ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId\])
+| table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId])
 
 ```
 #### CrowdStrike Falcon FQL — Redis spawning known post-exploitation interpreters
 
 ```text
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| ParentBaseFileName = /redis-server/i
+| ParentBaseFileName = /redis-server/i
 
-\| FileName = /^(cmd\\exe\|powershell\\exe\|wscript\\exe\|cscript\\exe\|mshta\\exe\|certutil\\exe\|bitsadmin\\exe\|rundll32\\exe\|regsvr32\\exe\|wmic\\exe\|net\\exe\|net1\\exe)\$/i
+| FileName = /^(cmd\\exe|powershell\\exe|wscript\\exe|cscript\\exe|mshta\\exe|certutil\\exe|bitsadmin\\exe|rundll32\\exe|regsvr32\\exe|wmic\\exe|net\\exe|net1\\exe)\$/i
 
-\| table(\[ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId\])
+| table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId])
 
 ```
 #### CrowdStrike Falcon FQL — New executables written to disk by Redis service account
 
 ```text
-\#event_simpleName = "NewExecutableWritten"
+#event_simpleName = "NewExecutableWritten"
 
-\| TargetFileName = /redis/i
+| TargetFileName = /redis/i
 
-\| table(\[ComputerName, TargetFileName, FilePath, ContextProcessId\])
+| table([ComputerName, TargetFileName, FilePath, ContextProcessId])
 
 ```
 #### tcpdump — Capture all TCP/6379 traffic to Redis application server (rolling hourly files)
 
 ```bash
-tcpdump -i eth0 -w /captures/redis\_%Y%m%d\_%H%M.pcap -G 3600 -C 500 "tcp port 6379"
+tcpdump -i eth0 -w /captures/redis_%Y%m%d_%H%M.pcap -G 3600 -C 500 "tcp port 6379"
 
 ```
 #### tcpdump — Host-scoped rolling capture for Redis server IP
 
 ```bash
-tcpdump -i eth0 -w /captures/redis_host\_%Y%m%d\_%H%M.pcap -G 1800 -C 200 "host \<redis_server_ip\> and tcp port 6379"
+tcpdump -i eth0 -w /captures/redis_host_%Y%m%d_%H%M.pcap -G 1800 -C 200 "host <redis_server_ip> and tcp port 6379"
 
 ```
 #### Datadog Log Search — Windows process creation under Redis (EventID 4688)
@@ -83,7 +83,7 @@ source:windows @EventID:4688 message:"redis-server.exe"
 command:redis-server
 
 ```text
-// Infrastructure \> Processes; flag any redis-server.exe not running as expected NT SERVICE account
+// Infrastructure > Processes; flag any redis-server.exe not running as expected NT SERVICE account
 
 ```
 #### Windows Event IDs to collect
@@ -97,9 +97,9 @@ Event ID 7034 (Service Crashed Unexpectedly): collect from System log for Redis 
 #### PowerShell — Collect process creation events with redis-server.exe as parent
 
 ```powershell
-Get-WinEvent -FilterHashtable @{LogName='Security';Id=4688;StartTime=(Get-Date).AddDays(-90)} \|
+Get-WinEvent -FilterHashtable @{LogName='Security';Id=4688;StartTime=(Get-Date).AddDays(-90)} |
 
-Where-Object {\$\_.Message -match 'redis-server'} \|
+Where-Object {\$_.Message -match 'redis-server'} |
 
 Select-Object TimeCreated,
 
@@ -129,11 +129,11 @@ Export-Csv -Path C:\hunt\redis_proc_creation.csv -NoTypeInformation
 #### YARA file-system scan — Redis working directory and Windows Temp for exploit staging artifacts
 
 ```text
-yara -r redis_lua_rce.yar C:\ProgramData\Redis\\ \>\> C:\hunt\yara_redis_hits.txt
+yara -r redis_lua_rce.yar C:\ProgramData\Redis\\ >> C:\hunt\yara_redis_hits.txt
 
-yara -r redis_lua_rce.yar C:\Windows\Temp\\ \>\> C:\hunt\yara_redis_hits.txt
+yara -r redis_lua_rce.yar C:\Windows\Temp\\ >> C:\hunt\yara_redis_hits.txt
 
-yara -r redis_lua_rce.yar "C:\Program Files\Redis\\ \>\> C:\hunt\yara_redis_hits.txt
+yara -r redis_lua_rce.yar "C:\Program Files\Redis\\ >> C:\hunt\yara_redis_hits.txt
 
 ```
 ### Analysis Queries
@@ -141,35 +141,35 @@ yara -r redis_lua_rce.yar "C:\Program Files\Redis\\ \>\> C:\hunt\yara_redis_hits
 #### CrowdStrike Falcon FQL — Rarity: uncommon child processes of redis-server.exe (rarest first)
 
 ```text
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| ParentBaseFileName = /redis-server/i
+| ParentBaseFileName = /redis-server/i
 
-\| groupBy(\[ComputerName, FileName, CommandLine\], function=count(), limit=100000)
+| groupBy([ComputerName, FileName, CommandLine], function=count(), limit=100000)
 
-\| sort(\_count, order=asc, limit=50)
+| sort(_count, order=asc, limit=50)
 
 ```
 #### CrowdStrike Falcon FQL — Outbound network connections from Redis process to non-Redis ports (Template C)
 
 ```text
-\#event_simpleName = "NetworkConnectIP4"
+#event_simpleName = "NetworkConnectIP4"
 
-\| RemotePort != 6379
+| RemotePort != 6379
 
-\| join(
+| join(
 
-query={#event_simpleName=ProcessRollup2 \| groupBy(\[aid,RawProcessId\], function=selectLast(\[ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId\]), limit=100000)},
+query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]), limit=100000)},
 
-field=\[aid,RawProcessId\],
+field=[aid,RawProcessId],
 
-include=\[ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId\]
+include=[ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]
 
 )
 
-\| FileName = /redis-server/i
+| FileName = /redis-server/i
 
-\| table(\[ComputerName, FileName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName\])
+| table([ComputerName, FileName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName])
 
 ```
 #### Wireshark display filter — Redis EVAL command payload inspection
@@ -183,13 +183,13 @@ tcp.port == 6379 && tcp.len \> 65535
 #### tshark CLI — Extract all EVAL command flows from capture for payload review
 
 ```bash
-tshark -r /captures/redis_capture.pcap -Y 'tcp.port==6379 && tcp.payload contains "EVAL"' -T fields -e frame.time -e ip.src -e ip.dst -e tcp.payload -E separator=, \> C:\hunt\redis_eval_commands.csv
+tshark -r /captures/redis_capture.pcap -Y 'tcp.port==6379 && tcp.payload contains "EVAL"' -T fields -e frame.time -e ip.src -e ip.dst -e tcp.payload -E separator=, > C:\hunt\redis_eval_commands.csv
 
 ```
 #### tshark CLI — Extract all Redis commands for full command log reconstruction
 
 ```bash
-tshark -r /captures/redis_capture.pcap -Y 'tcp.port==6379 && tcp.flags.push==1' -T fields -e frame.time -e ip.src -e ip.dst -e tcp.payload -E separator=, \> C:\hunt\redis_all_commands.csv
+tshark -r /captures/redis_capture.pcap -Y 'tcp.port==6379 && tcp.flags.push==1' -T fields -e frame.time -e ip.src -e ip.dst -e tcp.payload -E separator=, > C:\hunt\redis_all_commands.csv
 
 ```
 #### Datadog Log Analytics — Child process frequency under Redis (Top List)
@@ -219,11 +219,11 @@ source:cloudtrail @evt.name:(AssumeRole OR GetSecretValue OR DescribeInstances) 
 #### Windows Event Log PowerShell — Redis service crash history across hunt window
 
 ```powershell
-Get-WinEvent -FilterHashtable @{LogName='System';Id=7034;StartTime=(Get-Date).AddDays(-90)} \|
+Get-WinEvent -FilterHashtable @{LogName='System';Id=7034;StartTime=(Get-Date).AddDays(-90)} |
 
-Where-Object {\$\_.Message -match 'Redis'} \|
+Where-Object {\$_.Message -match 'Redis'} |
 
-Select-Object TimeCreated, Message \|
+Select-Object TimeCreated, Message |
 
 Export-Csv -Path C:\hunt\redis_service_crashes.csv -NoTypeInformation
 
@@ -231,7 +231,7 @@ Export-Csv -Path C:\hunt\redis_service_crashes.csv -NoTypeInformation
 #### Windows Event Log PowerShell — Scheduled tasks created on application servers post-exploitation check
 
 ```powershell
-Get-WinEvent -FilterHashtable @{LogName='Security';Id=4698;StartTime=(Get-Date).AddDays(-90)} \|
+Get-WinEvent -FilterHashtable @{LogName='Security';Id=4698;StartTime=(Get-Date).AddDays(-90)} |
 
 Select-Object TimeCreated,
 
@@ -247,7 +247,7 @@ Export-Csv -Path C:\hunt\scheduled_tasks.csv -NoTypeInformation
 #### OT network analysis — Modbus write function code baseline deviation (Plant iT PLC traffic)
 
 ```bash
-tshark -r /captures/ot_segment.pcap -Y 'mbtcp.modbus.func_code == 16 \|\| mbtcp.modbus.func_code == 6' -T fields -e ip.src -e ip.dst -e mbtcp.modbus.func_code -e mbtcp.modbus.reference_num \| sort \| uniq -c \| sort -rn \> C:\hunt\modbus_writes.txt
+tshark -r /captures/ot_segment.pcap -Y 'mbtcp.modbus.func_code == 16 || mbtcp.modbus.func_code == 6' -T fields -e ip.src -e ip.dst -e mbtcp.modbus.func_code -e mbtcp.modbus.reference_num | sort | uniq -c | sort -rn > C:\hunt\modbus_writes.txt
 
 ```
 #### Datadog Monitor — Redis spawning child process
@@ -259,7 +259,7 @@ Query: source:windows @EventID:4688 @ParentProcessName:"redis-server.exe"
 
 Evaluation window: last 5 minutes
 
-Alert condition: count \> 0
+Alert condition: count > 0
 
 Message: "ALERT: redis-server.exe spawned child process {{@NewProcessName}} on {{host.name}} — possible CVE-2025-49844/CVE-2025-46817 exploitation. Immediate investigation required. @security-oncall"
 
@@ -273,9 +273,9 @@ Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 \$pid = (Get-Process redis-server \| Select-Object -ExpandProperty Id -First 1)
 
 ```text
-yara redis_lua_rce.yar \$pid \>\> C:\hunt\yara_redis_mem_hits.txt
+yara redis_lua_rce.yar \$pid >> C:\hunt\yara_redis_mem_hits.txt
 
-// CrowdStrike RTR: runscript -Raw=\`\$p=(Get-Process redis-server -ErrorAction SilentlyContinue); if(\$p){yara redis_lua_rce.yar \$p.Id}\` -HostIds=\<agent_id\>
+// CrowdStrike RTR: runscript -Raw=`\$p=(Get-Process redis-server -ErrorAction SilentlyContinue); if(\$p){yara redis_lua_rce.yar \$p.Id}` -HostIds=<agent_id>
 
 ```
 ## Hypothesis 2
@@ -291,43 +291,43 @@ Lateral Movement \| T1021.001 — Remote Services: Remote Desktop Protocol \| At
 #### CrowdStrike Falcon FQL — Lateral movement connections from application server (Template C)
 
 ```text
-\#event_simpleName = "NetworkConnectIP4"
+#event_simpleName = "NetworkConnectIP4"
 
-\| in(RemotePort, values=\["445","3389","135","5985","5986"\])
+| in(RemotePort, values=["445","3389","135","5985","5986"])
 
-\| join(
+| join(
 
-query={#event_simpleName=ProcessRollup2 \| groupBy(\[aid,RawProcessId\], function=selectLast(\[ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId\]), limit=100000)},
+query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]), limit=100000)},
 
-field=\[aid,RawProcessId\],
+field=[aid,RawProcessId],
 
-include=\[ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId\]
+include=[ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]
 
 )
 
-\| table(\[ComputerName, FileName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName\])
+| table([ComputerName, FileName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName])
 
 ```
 #### CrowdStrike Falcon FQL — Credential access: suspicious process accessing LSASS
 
 ```text
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| FileName = /^(mimikatz\|wce\|gsecdump\|procdump)\$/i
+| FileName = /^(mimikatz|wce|gsecdump|procdump)\$/i
 
-\| table(\[ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId\])
+| table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId])
 
 ```
 #### tcpdump — Capture lateral movement traffic from application server to OT/engineering hosts
 
 ```bash
-tcpdump -i eth0 -w /captures/lateral\_%Y%m%d\_%H%M.pcap -G 3600 -C 500 "src host \<app_server_ip\> and (dst port 445 or dst port 3389 or dst port 5985 or dst port 5986)"
+tcpdump -i eth0 -w /captures/lateral_%Y%m%d_%H%M.pcap -G 3600 -C 500 "src host <app_server_ip> and (dst port 445 or dst port 3389 or dst port 5985 or dst port 5986)"
 
 ```
 #### Datadog Log Search — Network logon events originating from application server
 
 ```text
-source:windows @EventID:4624 @LogonType:3 host:\<app_server_hostname\>
+source:windows @EventID:4624 @LogonType:3 host:<app_server_hostname>
 
 // time range: hunt window; review TargetComputer for OT-segment hostnames
 
@@ -335,7 +335,7 @@ source:windows @EventID:4624 @LogonType:3 host:\<app_server_hostname\>
 #### Datadog Log Search — RemoteInteractive (RDP) logon events
 
 ```text
-source:windows @EventID:4624 @LogonType:10 host:\<app_server_hostname\>
+source:windows @EventID:4624 @LogonType:10 host:<app_server_hostname>
 
 // time range: hunt window; flag any RDP logon to engineering workstations or HMIs
 
@@ -351,9 +351,9 @@ Event ID 4776 (NTLM Credential Validation): collect from domain controllers for 
 #### PowerShell — Lateral movement logon collection from application server Security log
 
 ```powershell
-Get-WinEvent -FilterHashtable @{LogName='Security';Id=4624;StartTime=(Get-Date).AddDays(-90)} \|
+Get-WinEvent -FilterHashtable @{LogName='Security';Id=4624;StartTime=(Get-Date).AddDays(-90)} |
 
-Where-Object {(\$\_.Properties\[8\].Value -eq 3 -or \$\_.Properties\[8\].Value -eq 10) -and \$\_.Properties\[18\].Value -ne '-'} \|
+Where-Object {(\$_.Properties[8].Value -eq 3 -or \$_.Properties[8].Value -eq 10) -and \$_.Properties[18].Value -ne '-'} |
 
 Select-Object TimeCreated,
 
@@ -385,11 +385,11 @@ Export-Csv -Path C:\hunt\lateral_logons.csv -NoTypeInformation
 #### YARA file-system scan — Credential dumping tool artifacts on application server
 
 ```text
-yara -r cred_dump_tools.yar C:\Windows\Temp\\ \>\> C:\hunt\yara_cred_hits.txt
+yara -r cred_dump_tools.yar C:\Windows\Temp\\ >> C:\hunt\yara_cred_hits.txt
 
-yara -r cred_dump_tools.yar C:\Users\\ \>\> C:\hunt\yara_cred_hits.txt
+yara -r cred_dump_tools.yar C:\Users\\ >> C:\hunt\yara_cred_hits.txt
 
-yara -r cred_dump_tools.yar C:\ProgramData\\ \>\> C:\hunt\yara_cred_hits.txt
+yara -r cred_dump_tools.yar C:\ProgramData\\ >> C:\hunt\yara_cred_hits.txt
 
 ```
 ### Analysis Queries
@@ -397,23 +397,23 @@ yara -r cred_dump_tools.yar C:\ProgramData\\ \>\> C:\hunt\yara_cred_hits.txt
 #### CrowdStrike Falcon FQL — Frequency: hosts initiating connections to OT subnet (rarity analysis)
 
 ```text
-\#event_simpleName = "NetworkConnectIP4"
+#event_simpleName = "NetworkConnectIP4"
 
-\| cidr(RemoteAddressIP4, subnet=\["\<ot_subnet\>/24"\])
+| cidr(RemoteAddressIP4, subnet=["<ot_subnet>/24"])
 
-\| join(
+| join(
 
-query={#event_simpleName=ProcessRollup2 \| groupBy(\[aid,RawProcessId\], function=selectLast(\[ImageFileName,FileName,ComputerName\]), limit=100000)},
+query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,ComputerName]), limit=100000)},
 
-field=\[aid,RawProcessId\],
+field=[aid,RawProcessId],
 
-include=\[ImageFileName,FileName,ComputerName\]
+include=[ImageFileName,FileName,ComputerName]
 
 )
 
-\| groupBy(\[ComputerName, FileName, RemoteAddressIP4\], function=count(), limit=100000)
+| groupBy([ComputerName, FileName, RemoteAddressIP4], function=count(), limit=100000)
 
-\| sort(\_count, order=asc, limit=50)
+| sort(_count, order=asc, limit=50)
 
 ```
 #### Wireshark display filter — SMB lateral movement to OT or engineering segment
@@ -427,7 +427,7 @@ opcua && tcp.port == 4840
 #### tshark CLI — Extract SMB2 session setup attempts toward OT segment
 
 ```bash
-tshark -r /captures/lateral_capture.pcap -Y 'smb2.cmd == 0x0001 and ip.dst contains "\<ot_subnet\>"' -T fields -e ip.src -e ip.dst -e smb2.ses_id -E separator=, \> C:\hunt\smb_lateral.csv
+tshark -r /captures/lateral_capture.pcap -Y 'smb2.cmd == 0x0001 and ip.dst contains "<ot_subnet>"' -T fields -e ip.src -e ip.dst -e smb2.ses_id -E separator=, > C:\hunt\smb_lateral.csv
 
 ```
 #### Datadog Log Analytics — Network logon frequency by source and target host
@@ -443,7 +443,7 @@ source:windows @EventID:4624 @LogonType:3
 #### OT network analysis — EtherNet/IP CIP service code anomalies from IT tier
 
 ```bash
-tshark -r /captures/ot_segment.pcap -Y 'enip && ip.src == \<app_server_ip\>' -T fields -e ip.src -e ip.dst -e cip.service \| sort \| uniq -c \| sort -rn \> C:\hunt\enip_from_it.txt
+tshark -r /captures/ot_segment.pcap -Y 'enip && ip.src == <app_server_ip>' -T fields -e ip.src -e ip.dst -e cip.service | sort | uniq -c | sort -rn > C:\hunt\enip_from_it.txt
 
 ```
 #### Datadog Monitor — Network logon from application server to OT hosts
@@ -451,11 +451,11 @@ tshark -r /captures/ot_segment.pcap -Y 'enip && ip.src == \<app_server_ip\>' -T 
 ```text
 Type: Log Alert
 
-Query: source:windows @EventID:4624 @LogonType:3 @TargetComputer:(\<ot_hostname_1\> OR \<ot_hostname_2\>)
+Query: source:windows @EventID:4624 @LogonType:3 @TargetComputer:(<ot_hostname_1> OR <ot_hostname_2>)
 
 Evaluation window: last 15 minutes
 
-Alert condition: count \> 0
+Alert condition: count > 0
 
 Message: "ALERT: Network logon from {{host.name}} to OT host {{@TargetComputer}} — potential lateral movement following Redis exploitation. @security-oncall @ot-security-team"
 
@@ -467,17 +467,17 @@ Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 #### YARA memory scan — Credential dumping tools in memory of all application server processes
 
 ```powershell
-Get-Process \| ForEach-Object {
+Get-Process | ForEach-Object {
 
 ```
 \$result = yara cred_dump_tools.yar \$\_.Id 2\>\$null
 
 ```text
-if (\$result) { Write-Output "HIT PID=\$(\$\_.Id) Name=\$(\$\_.ProcessName): \$result" }
+if (\$result) { Write-Output "HIT PID=\$(\$_.Id) Name=\$(\$_.ProcessName): \$result" }
 
-} \>\> C:\hunt\yara_cred_mem_hits.txt
+} >> C:\hunt\yara_cred_mem_hits.txt
 
-// CrowdStrike RTR: runscript -Raw=\`Get-Process \| ForEach-Object { yara cred_dump_tools.yar \$\_.Id 2\>\$null }\` -HostIds=\<agent_id\>
+// CrowdStrike RTR: runscript -Raw=`Get-Process | ForEach-Object { yara cred_dump_tools.yar \$_.Id 2>\$null }` -HostIds=<agent_id>
 
 ```
 ## Hypothesis 3
@@ -493,37 +493,37 @@ Impact \| T1565.001 — Data Manipulation: Stored Data Manipulation \| Redis ser
 #### CrowdStrike Falcon FQL — Redis configuration registry modifications (Template B)
 
 ```text
-\#event_simpleName = "RegGenericValueUpdate"
+#event_simpleName = "RegGenericValueUpdate"
 
-\| RegObjectName = /redis/i
+| RegObjectName = /redis/i
 
-\| join(
+| join(
 
-query={#event_simpleName=ProcessRollup2 \| groupBy(\[aid,TargetProcessId\], function=selectLast(\[ImageFileName,FileName,CommandLine,AuthenticationId\]), limit=100000)},
+query={#event_simpleName=ProcessRollup2 | groupBy([aid,TargetProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId]), limit=100000)},
 
-field=\[aid,ContextProcessId\], key=\[aid,TargetProcessId\],
+field=[aid,ContextProcessId], key=[aid,TargetProcessId],
 
-include=\[ImageFileName,FileName,CommandLine,AuthenticationId\]
+include=[ImageFileName,FileName,CommandLine,AuthenticationId]
 
 )
 
-\| table(\[ComputerName, AuthenticationId, FileName, CommandLine, RegObjectName, RegValueName, RegStringValue\])
+| table([ComputerName, AuthenticationId, FileName, CommandLine, RegObjectName, RegValueName, RegStringValue])
 
 ```
 #### CrowdStrike Falcon FQL — Redis-cli usage (unauthorized direct Redis access)
 
 ```text
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| FileName = /redis-cli/i
+| FileName = /redis-cli/i
 
-\| table(\[ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId\])
+| table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId])
 
 ```
 #### tcpdump — Capture Redis data manipulation commands on application server
 
 ```bash
-tcpdump -i eth0 -w /captures/redis_data\_%Y%m%d.pcap -G 7200 -C 500 "tcp port 6379 and host \<redis_server_ip\>"
+tcpdump -i eth0 -w /captures/redis_data_%Y%m%d.pcap -G 7200 -C 500 "tcp port 6379 and host <redis_server_ip>"
 
 ```
 #### Datadog Log Search — File object access in Redis data directory
@@ -551,9 +551,9 @@ Event ID 4657 (Registry Value Modified): monitor HKLM\SOFTWARE\Redis\\ and HKLM\
 #### PowerShell — File access auditing on Redis data directory
 
 ```powershell
-Get-WinEvent -FilterHashtable @{LogName='Security';Id=4663;StartTime=(Get-Date).AddDays(-90)} \|
+Get-WinEvent -FilterHashtable @{LogName='Security';Id=4663;StartTime=(Get-Date).AddDays(-90)} |
 
-Where-Object {\$\_.Message -match 'Redis'} \|
+Where-Object {\$_.Message -match 'Redis'} |
 
 Select-Object TimeCreated,
 
@@ -583,9 +583,9 @@ Export-Csv -Path C:\hunt\redis_file_access.csv -NoTypeInformation
 #### YARA file-system scan — Redis data directory for unauthorized file drops
 
 ```text
-yara -r redis_lua_rce.yar C:\ProgramData\Redis\data\\ \>\> C:\hunt\yara_redis_data_hits.txt
+yara -r redis_lua_rce.yar C:\ProgramData\Redis\data\\ >> C:\hunt\yara_redis_data_hits.txt
 
-yara -r redis_lua_rce.yar C:\ProgramData\Redis\\ \>\> C:\hunt\yara_redis_data_hits.txt
+yara -r redis_lua_rce.yar C:\ProgramData\Redis\\ >> C:\hunt\yara_redis_data_hits.txt
 
 ```
 ### Analysis Queries
@@ -593,13 +593,13 @@ yara -r redis_lua_rce.yar C:\ProgramData\Redis\\ \>\> C:\hunt\yara_redis_data_hi
 #### CrowdStrike Falcon FQL — Redis-cli command-line arguments for data manipulation indicators
 
 ```text
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| FileName = /redis-cli/i
+| FileName = /redis-cli/i
 
-\| CommandLine = /^.\*(EVAL\|FUNCTION\|SET\|DEL\|HSET\|FLUSHALL\|CONFIG).\*/i
+| CommandLine = /^.\*(EVAL|FUNCTION|SET|DEL|HSET|FLUSHALL|CONFIG).\*/i
 
-\| table(\[ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId\])
+| table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId])
 
 ```
 #### Wireshark display filter — Redis SET or DEL write commands targeting process data keys
@@ -609,7 +609,7 @@ tcp.port == 6379 && (tcp.payload contains "SET" \|\| tcp.payload contains "HSET"
 #### tshark CLI — Extract Redis write commands from data capture for key-value inventory
 
 ```bash
-tshark -r /captures/redis_data_capture.pcap -Y 'tcp.port==6379 && tcp.flags.push==1' -T fields -e frame.time -e ip.src -e tcp.payload \| grep -iE '(SET \|HSET \|DEL \|FLUSHALL)' \> C:\hunt\redis_write_cmds.txt
+tshark -r /captures/redis_data_capture.pcap -Y 'tcp.port==6379 && tcp.flags.push==1' -T fields -e frame.time -e ip.src -e tcp.payload | grep -iE '(SET |HSET |DEL |FLUSHALL)' > C:\hunt\redis_write_cmds.txt
 
 ```
 #### Datadog Log Analytics — File access frequency on Redis data directory by process name
@@ -629,7 +629,7 @@ Query: source:windows @EventID:4657 message:"Redis"
 
 Evaluation window: last 5 minutes
 
-Alert condition: count \> 0
+Alert condition: count > 0
 
 Message: "ALERT: Redis registry configuration modified on {{host.name}} — possible post-exploitation persistence or configuration tampering. @security-oncall"
 
@@ -643,9 +643,9 @@ Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 \$pid = (Get-Process redis-server \| Select-Object -ExpandProperty Id -First 1)
 
 ```text
-yara redis_lua_rce.yar \$pid \>\> C:\hunt\yara_redis_mem_h3.txt
+yara redis_lua_rce.yar \$pid >> C:\hunt\yara_redis_mem_h3.txt
 
-// CrowdStrike RTR: runscript -Raw=\`\$p=(Get-Process redis-server -ErrorAction SilentlyContinue); if(\$p){yara redis_lua_rce.yar \$p.Id}\` -HostIds=\<agent_id\>
+// CrowdStrike RTR: runscript -Raw=`\$p=(Get-Process redis-server -ErrorAction SilentlyContinue); if(\$p){yara redis_lua_rce.yar \$p.Id}` -HostIds=<agent_id>
 
 ```
 ## Hypothesis 4
@@ -661,31 +661,31 @@ Impact \| T1499.004 — Endpoint Denial of Service: Application or System Exploi
 #### CrowdStrike Falcon FQL — Redis process launch frequency (high restart count = crash loop)
 
 ```text
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| FileName = /redis-server/i
+| FileName = /redis-server/i
 
-\| groupBy(\[ComputerName, FileName\], function=count(), limit=100000)
+| groupBy([ComputerName, FileName], function=count(), limit=100000)
 
-\| sort(\_count, order=desc, limit=50)
+| sort(_count, order=desc, limit=50)
 
 ```
 #### CrowdStrike Falcon FQL — Services.exe launching Redis after crash recovery
 
 ```text
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| FileName = /redis-server/i
+| FileName = /redis-server/i
 
-\| ParentBaseFileName = /services/i
+| ParentBaseFileName = /services/i
 
-\| table(\[ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId\])
+| table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId])
 
 ```
 #### tcpdump — Capture traffic coinciding with Redis crash windows
 
 ```bash
-tcpdump -i eth0 -w /captures/redis_dos\_%Y%m%d\_%H%M.pcap -G 900 -C 200 "tcp port 6379 and host \<redis_server_ip\>"
+tcpdump -i eth0 -w /captures/redis_dos_%Y%m%d_%H%M.pcap -G 900 -C 200 "tcp port 6379 and host <redis_server_ip>"
 
 ```
 #### Datadog Log Search — Redis service crash events (EventID 7034)
@@ -715,11 +715,11 @@ Event ID 7045 (New Service Installed): System log, flag any new services install
 #### PowerShell — Redis service crash event collection across full hunt window
 
 ```powershell
-Get-WinEvent -FilterHashtable @{LogName='System';Id=@(7034,7036);StartTime=(Get-Date).AddDays(-90)} \|
+Get-WinEvent -FilterHashtable @{LogName='System';Id=@(7034,7036);StartTime=(Get-Date).AddDays(-90)} |
 
-Where-Object {\$\_.Message -match 'Redis'} \|
+Where-Object {\$_.Message -match 'Redis'} |
 
-Select-Object TimeCreated, Id, Message \|
+Select-Object TimeCreated, Id, Message |
 
 ```
 Sort-Object TimeCreated \|
@@ -743,7 +743,7 @@ Export-Csv -Path C:\hunt\redis_service_events.csv -NoTypeInformation
 #### YARA file-system scan — Windows Minidump directory for Redis crash dump artifacts
 
 ```text
-yara -r redis_lua_rce.yar C:\Windows\Minidump\\ \>\> C:\hunt\yara_crash_hits.txt
+yara -r redis_lua_rce.yar C:\Windows\Minidump\\ >> C:\hunt\yara_crash_hits.txt
 
 ```
 ### Analysis Queries
@@ -751,13 +751,13 @@ yara -r redis_lua_rce.yar C:\Windows\Minidump\\ \>\> C:\hunt\yara_crash_hits.txt
 #### CrowdStrike Falcon FQL — Daily Redis restart frequency (baseline deviation = crash exploitation)
 
 ```text
-\#event_simpleName = "ProcessRollup2"
+#event_simpleName = "ProcessRollup2"
 
-\| FileName = /redis-server/i
+| FileName = /redis-server/i
 
-\| groupBy(\[ComputerName, \#date(ContextTimeStamp)\], function=count(), limit=100000)
+| groupBy([ComputerName, #date(ContextTimeStamp)], function=count(), limit=100000)
 
-\| sort(\_count, order=desc, limit=90)
+| sort(_count, order=desc, limit=90)
 
 ```
 #### Wireshark display filter — High-rate SYN connections to Redis port (DoS volume indicator)
@@ -767,7 +767,7 @@ tcp.port == 6379 && tcp.flags.syn == 1 && !tcp.flags.ack == 1
 #### tshark CLI — Count Redis SYN attempts per source IP for DoS source identification
 
 ```bash
-tshark -r /captures/redis_dos_capture.pcap -Y 'tcp.port==6379 && tcp.flags.syn==1 && !tcp.flags.ack' -T fields -e ip.src \| sort \| uniq -c \| sort -rn \> C:\hunt\redis_dos_sources.txt
+tshark -r /captures/redis_dos_capture.pcap -Y 'tcp.port==6379 && tcp.flags.syn==1 && !tcp.flags.ack' -T fields -e ip.src | sort | uniq -c | sort -rn > C:\hunt\redis_dos_sources.txt
 
 ```
 #### Datadog Log Analytics — Redis crash event frequency over hunt window
@@ -777,7 +777,7 @@ source:windows @EventID:7034 message:"Redis"
 
 // Analytics: Timeseries view, count by @EventID; time range: hunt window
 
-// A spike in crash count (\>2 per 15 minutes) indicates active DoS exploitation or crash loop
+// A spike in crash count (>2 per 15 minutes) indicates active DoS exploitation or crash loop
 
 ```
 #### Datadog Monitor — Redis repeated service crash alert
@@ -789,7 +789,7 @@ Query: source:windows @EventID:7034 message:"Redis"
 
 Evaluation window: last 15 minutes
 
-Alert condition: count \>= 2
+Alert condition: count >= 2
 
 Message: "ALERT: Redis service has crashed {{value}} times in 15 minutes on {{host.name}} — possible CVE-2025-46819 DoS exploitation or memory corruption instability. @security-oncall @plant-operations"
 
@@ -803,7 +803,7 @@ Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 \$pid = (Get-Process redis-server \| Select-Object -ExpandProperty Id -First 1)
 
 ```text
-yara redis_lua_rce.yar \$pid \>\> C:\hunt\yara_redis_post_crash.txt
+yara redis_lua_rce.yar \$pid >> C:\hunt\yara_redis_post_crash.txt
 
 // Automate via Windows Service Recovery action to run scan on first failure restart event
 
@@ -1037,7 +1037,7 @@ Message\|contains: 'Redis'
 timeframe: 15m
 
 ```text
-condition: selection \| count() \> 2
+condition: selection | count() > 2
 
 falsepositives:
 
@@ -1049,7 +1049,7 @@ falsepositives:
 ```yaml
 level: medium
 
-alert tcp any any -\> any 6379 (
+alert tcp any any -> any 6379 (
 
 ```
 msg:"REDIS Lua EVAL Command - Potential CVE-2025-49844 RediShell Exploitation Attempt";
@@ -1073,7 +1073,7 @@ metadata:affected_product Redis,created_at 2026_03_27,deployment Perimeter;
 ```text
 )
 
-alert tcp any any -\> any 6379 (
+alert tcp any any -> any 6379 (
 
 ```
 msg:"REDIS FUNCTION LOAD Command - Potential CVE-2025-46818 Code Injection Attempt";
