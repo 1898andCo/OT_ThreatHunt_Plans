@@ -686,8 +686,9 @@ strings:
 
 \$s_altpath_setup = /\\(setup|admin|system)\[^\\\]\*\sHTTP\\1\\\[01\]/ ascii
 
+```text
 condition:
-
+```
 any of them
 
 }
@@ -724,8 +725,9 @@ strings:
 
 \$m_shell_seed = /(\\bin\\(sh|bash)|nc\s+-e|\\dev\\tcp\\)/ ascii
 
+```text
 condition:
-
+```
 ( any of (\$m_fsbrowser, \$m_ltrx, \$m_host_inject) and \$m_auth_admin ) or
 
 ( \$m_silex_redirect ) or
@@ -766,12 +768,11 @@ strings:
 
 \$p_revsh = /(\\dev\\tcp\\|nc\s+-e|socat\s+exec:)/ ascii
 
+```text
 condition:
-
 any of (\$h_silex\_\*) and 2 of (\$p\_\*)
-
 }
-
+```
 # Indicators of Compromise
 
 Network IOCs (behavioral): HTTP requests to converter management IPs containing URL fragments FsBrowser or ltrx_evo with query strings that include shell metacharacters in the host parameter; HTTP requests carrying Authorization: Basic YWRt... headers against Lantronix management paths ending in setup, admin, or system; HTTP POST bodies to Silex SD-330AC login endpoints with redirect= parameters exceeding 200 bytes; outbound TFTP (UDP/69) originating from converter IP addresses; unexpected east-west traffic from converter IPs to PLC, historian, or medical-device VLANs.

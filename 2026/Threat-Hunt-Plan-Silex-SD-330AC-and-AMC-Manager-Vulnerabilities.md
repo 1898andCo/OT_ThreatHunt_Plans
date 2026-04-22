@@ -688,8 +688,9 @@ strings:
 
 \$s_auth_pass_header = /Authorization:\s\*Basic\s+\[A-Za-z0-9+\\=\]+/ ascii
 
+```text
 condition:
-
+```
 any of them
 
 }
@@ -724,8 +725,9 @@ strings:
 
 \$m_shell_seed = /(\\bin\\(sh|bash)|nc\s+-e|\\dev\\tcp\\)/ ascii
 
+```text
 condition:
-
+```
 \$m_silex_redirect or
 
 ( any of (\$m_silex_product, \$m_silex_amc) and any of (\$m_factory_reset, \$m_shell_seed) )
@@ -764,12 +766,11 @@ strings:
 
 \$p_revsh = /(\\dev\\tcp\\|nc\s+-e|socat\s+exec:)/ ascii
 
+```text
 condition:
-
 any of (\$h_silex\_\*) and 2 of (\$p\_\*)
-
 }
-
+```
 # Indicators of Compromise
 
 Network IOCs (behavioral): HTTP POST requests to SD-330AC login endpoints containing redirect= parameters exceeding 200 bytes; HTTP requests with Authorization headers from source IPs outside the admin allowlist receiving HTTP 200 responses from Silex management IPs; SYN-only outbound connections originating from Silex converter IP ranges to destinations outside the documented admin subnet; firmware-upload POSTs to SD-330AC web endpoints outside documented change windows; SNMP sysUpTime resets or cold/warmStart traps from SD-330AC assets outside maintenance schedule.

@@ -23,29 +23,24 @@ A network-adjacent attacker has been collecting 3DES-CBC-encrypted TLS sessions 
 
 ### Collection Queries
 
-**CrowdStrike Falcon FQL — connections from engineering workstations to the WALL IE subnet:**
+**CrowdStrike Falcon FQL - connections from engineering workstations to the WALL IE subnet:**
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | cidr(RemoteAddressIP4, subnet=["<wallie_subnet>"])
-
 | RemotePort = "443"
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]), limit=100000)},
-
 field=[aid,RawProcessId],
-
 include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]
-
 )
-
 | table([ComputerName, FileName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName])
+```
 
+```text
 tcpdump capture on the SPAN port facing the WALL IE management VLAN:
-
+```
+```text
 tcpdump -i <span_iface> -w /pcaps/wallie_tls_%Y%m%d_%H%M.pcap -G 3600 -C 100 -W 168 'host <wallie_ip_list> and tcp port 443'
 ```
 
@@ -65,9 +60,7 @@ command:(openssl.exe OR wireshark.exe OR tshark.exe OR python.exe) user:<ot_admi
 
 ```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; ID=5156; StartTime=(Get-Date).AddDays(-180)} |
-
 Where-Object { $_.Message -match '<wallie_subnet_regex>' -and $_.Message -match 'Destination Port:\s*443' } |
-
 Export-Csv -Path .\wallie_tls_connections.csv -NoTypeInformation
 ```
 
@@ -77,9 +70,17 @@ Export-Csv -Path .\wallie_tls_connections.csv -NoTypeInformation
 
 **- Dragos Platform — Investigate > Connection Timeline, filter Protocol = TLS/HTTPS to WALL IE assets; Detections panel filtered by Category = Collection for adversary-in-the-middle alerts.**
 
-**- Nozomi Networks — Assets > Connections, filter Protocol = TLS via GET /api/open/connections?protocol=tls&asset=<wallie_asset_id>.**
+**- Nozomi Networks - Assets > Connections, filter Protocol = TLS; API collection query:**
 
-**- Armis — Asset Management > Devices > filter Vendor = Helmholz, export CSV; REST GET /api/v1/devices?type=OT&vendor=Helmholz; check Policy violations on TLS sessions with weak cipher suites.**
+```text
+GET /api/open/connections?protocol=tls&asset=<wallie_asset_id>
+```
+
+**- Armis - Asset Management > Devices > filter Vendor = Helmholz, export CSV; API inventory query:**
+
+```text
+GET /api/v1/devices?type=OT&vendor=Helmholz
+```
 
 **- Tenable OT — Assets > Devices > Export filtered Vendor=Helmholz; Vulnerabilities view for CVE-2016-2183 across the asset inventory.**
 
@@ -97,13 +98,9 @@ yara -r C:\Users\pac\\claude\tools\rules\Sweet32_Exploit_Tooling.yar <user_profi
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | cidr(RemoteAddressIP4, subnet=["<wallie_subnet>"])
-
 | RemotePort = "443"
-
 | groupBy([ComputerName, RemoteAddressIP4], function=count(), limit=100000)
-
 | sort(_count, order=desc, limit=50)
 ```
 
@@ -117,13 +114,18 @@ tls.handshake.type == 2 and (tls.handshake.ciphersuite == 0x000a or tls.handshak
 
 ```text
 tshark -r wallie_tls.pcap -Y 'tls.handshake.type == 2 and tls.handshake.ciphersuite in {0x000a 0xc012 0x0016 0x008b 0xc003 0xc008} and ip.src in {<wallie_ip_list>}' -T fields -e frame.time -e ip.src -e ip.dst -e tls.handshake.ciphersuite
+```
 
+```text
 sslyze cipher enumeration against each WALL IE:
-
+```
+```text
 for ip in $(cat <wallie_ip_list_file>); do sslyze --certinfo --tls_v1_0 --tls_v1_1 --tls_v1_2 --cipher_suite_name_regex '3DES|DES' $ip:443; done > wallie_cipher_audit.log
+```
 
-**Datadog Log Analytics — Timeseries view, group by @network.destination.ip; time range: last 180 days:**
+**Datadog Log Analytics - Timeseries view, group by @network.destination.ip; time range: last 180 days:**
 
+```text
 source:firewall @network.destination.ip:<wallie_subnet> @network.destination.port:443
 ```
 
@@ -131,17 +133,11 @@ source:firewall @network.destination.ip:<wallie_subnet> @network.destination.por
 
 ```text
 Type: Log Alert
-
 Query: source:firewall @network.destination.ip:<wallie_subnet> @network.destination.port:443 @tls.cipher_suite:(*3DES* OR *DES_EDE*)
-
 Evaluation window: last 15 minutes
-
 Alert condition: count > 0
-
 Message: "ALERT: 3DES cipher suite negotiated against WALL IE — CVE-2016-2183 exploitation precondition @ot-soc-pagerduty"
-
 Prerequisites: Firewall TLS decrypt logs forwarded with @tls.cipher_suite populated
-
 Create via: Monitors > New Monitor > Log Alert
 ```
 
@@ -159,13 +155,17 @@ A site-to-site IPSec tunnel terminating on a WALL IE is negotiating 3DES-ESP or 
 
 ### Collection Queries
 
+```text
 tcpdump capture on the SPAN port facing the IPSec-terminating WALL IE uplink:
-
+```
 ```text
 tcpdump -i <span_iface> -w /pcaps/wallie_ipsec_%Y%m%d_%H%M.pcap -G 3600 -C 100 -W 168 '(udp port 500 or udp port 4500 or proto 50)'
+```
 
+```text
 ike-scan active cipher enumeration against each WALL IE:
-
+```
+```text
 for ip in $(cat <wallie_ip_list_file>); do ike-scan -M --trans=5,2,1,2 --trans=5,2,1,1 $ip; done > wallie_ike_transforms.log
 ```
 
@@ -179,9 +179,7 @@ source:(firewall OR syslog) (message:"IKE Phase 2" OR message:"ESP SA" OR messag
 
 ```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4984,5451,5453; StartTime=(Get-Date).AddDays(-180)} |
-
 Where-Object { $_.Message -match '<wallie_ip_regex>' } |
-
 Export-Csv .\wallie_ipsec_sa.csv -NoTypeInformation
 ```
 
@@ -197,7 +195,11 @@ snmpget -v2c -c <community> <wallie_ip> IF-MIB::ifInOctets.<tunnel_ifIndex> IF-M
 
 **- Dragos Platform — Investigate > Connection Timeline, filter Protocol = ESP or IKE; Detections panel for Weak-Cipher / Long-SA alerts.**
 
-**- Nozomi Networks — Assets > Connections, filter Protocol = ESP; GET /api/open/connections?protocol=esp&asset=<wallie_asset_id>.**
+**- Nozomi Networks - Assets > Connections, filter Protocol = ESP; API collection query:**
+
+```text
+GET /api/open/connections?protocol=esp&asset=<wallie_asset_id>
+```
 
 **- Armis — Policy engine alerts for long-lived IPSec SAs with legacy cipher on OT assets.**
 
@@ -205,8 +207,9 @@ snmpget -v2c -c <community> <wallie_ip> IF-MIB::ifInOctets.<tunnel_ifIndex> IF-M
 
 **- Forescout eyeInspect — Threat Detection panel filtered to IPSec Weak-Cipher category.**
 
+```text
 YARA scan for VPN configuration files with explicit 3DES policy:
-
+```
 ```text
 yara -r C:\Users\pac\\claude\tools\rules\IPSec_3DES_Policy.yar <vpn_config_root> >> 3des_policy_hits.txt
 ```
@@ -241,17 +244,11 @@ source:(firewall OR syslog) "IKE Phase 2" @transform.encryption:(*3DES* OR *DES*
 
 ```text
 Type: Log Alert
-
 Query: source:(firewall OR syslog) ("IKE Phase 2" OR "child SA established") @transform.encryption:(*3DES* OR *DES_CBC*) host:<wallie_peer_list>
-
 Evaluation window: last 30 minutes
-
 Alert condition: count > 0
-
 Message: "ALERT: IPSec SA established with 3DES transform on WALL IE — CVE-2016-2183 precondition @ot-soc-pagerduty"
-
 Prerequisites: IPSec/IKE logs forwarded from WALL IE peers with @transform.encryption populated
-
 Create via: Monitors > New Monitor > Log Alert
 ```
 
@@ -259,13 +256,10 @@ Create via: Monitors > New Monitor > Log Alert
 
 ```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4984; StartTime=(Get-Date).AddDays(-180)} |
-
 Where-Object { $_.Message -match '<wallie_ip_regex>' } |
-```
-
 Select-Object TimeCreated, MachineName, @{N='SA';E={$_.Message}} |
-
 Export-Csv .\wallie_long_lived_sa.csv -NoTypeInformation
+```
 
 ## Hypothesis 3
 
@@ -279,9 +273,12 @@ Direct device version probe via HTTP banner or SNMP sysDescr:
 
 ```text
 for ip in $(cat <wallie_ip_list_file>); do echo "=== $ip ==="; curl -sk --max-time 5 <https://$ip/> | grep -iE 'firmware|version|WALL IE' | head -5; snmpget -v2c -c <community> $ip 1.3.6.1.2.1.1.1.0; done > wallie_firmware_inventory.log
+```
 
+```text
 nmap banner + NSE scan for WALL IE fingerprint:
-
+```
+```text
 nmap -sV --script http-title,http-headers,ssl-enum-ciphers -p 80,443 -iL <wallie_ip_list_file> -oN wallie_nmap_fingerprint.txt
 ```
 
@@ -295,9 +292,7 @@ source:(armis OR tenable_ot OR claroty) @device.vendor:Helmholz @device.model:"W
 
 ```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4688; StartTime=(Get-Date).AddDays(-180)} |
-
 Where-Object { $_.Message -match 'WALLconfig|Helmholz|wallie' } |
-
 Export-Csv .\wallie_admin_tool_runs.csv -NoTypeInformation
 ```
 
@@ -307,7 +302,11 @@ Export-Csv .\wallie_admin_tool_runs.csv -NoTypeInformation
 
 **- Dragos Platform — Assets > Asset Details for each WALL IE — Firmware Version History panel; flag any unit below 1.10.232.**
 
-**- Nozomi Networks — Assets > WALL IE inventory > Property Changes; GET /api/open/assets?vendor=Helmholz.**
+**- Nozomi Networks - Assets > WALL IE inventory > Property Changes; API inventory query:**
+
+```text
+GET /api/open/assets?vendor=Helmholz
+```
 
 **- Armis — Asset Activity firmware version attribute per WALL IE.**
 
@@ -315,8 +314,9 @@ Export-Csv .\wallie_admin_tool_runs.csv -NoTypeInformation
 
 **- Forescout eyeInspect — Asset timeline per WALL IE, filter Event Type = Firmware Change.**
 
+```text
 YARA scan for Helmholz firmware images on engineering workstations / staging servers:
-
+```
 ```text
 yara -r C:\Users\pac\\claude\tools\rules\Helmholz_Firmware_Image.yar <firmware_staging_root> >> helmholz_firmware_hits.txt
 ```
@@ -339,17 +339,11 @@ source:(armis OR tenable_ot OR claroty) @device.vendor:Helmholz @device.model:"W
 
 ```text
 Type: Log Alert
-
 Query: source:(armis OR tenable_ot OR claroty) @device.vendor:Helmholz @device.firmware_version:<1.10.232
-
 Evaluation window: last 24 hours
-
 Alert condition: count > 0
-
 Message: "ALERT: WALL IE asset still on vulnerable firmware — CVE-2016-2183 exposure @ot-ops-pagerduty"
-
 Prerequisites: Asset-inventory integration forwarding @device.firmware_version
-
 Create via: Monitors > New Monitor > Log Alert
 ```
 
@@ -361,8 +355,9 @@ An adversary has leveraged a successful Sweet32 plaintext recovery against a WAL
 
 ### Collection Queries
 
+```text
 tcpdump on the SPAN port facing the WALL IE management VLAN to capture admin logon traffic:
-
+```
 ```text
 tcpdump -i <span_iface> -w /pcaps/wallie_admin_%Y%m%d_%H%M.pcap -G 1800 -C 100 -W 336 'host <wallie_ip_list> and (tcp port 443 or tcp port 22)'
 ```
@@ -383,9 +378,7 @@ source:cloudtrail @evt.name:(ConsoleLogin OR AssumeRole) -@network.client.ip:(<k
 
 ```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4624,4625; StartTime=(Get-Date).AddDays(-180)} |
-
 Where-Object { $_.MachineName -match '<wallie_admin_jump_host>' } |
-
 Export-Csv .\wallie_admin_logons.csv -NoTypeInformation
 ```
 
@@ -401,7 +394,11 @@ snmpget -v2c -c <community> <wallie_ip> 1.3.6.1.2.1.1.3.0 >> wallie_sysuptime_$(
 
 **- Dragos Platform — Detections filter Category = Impact or Defense Evasion; Assets > Device Timeline for any WALL IE with config changes outside a scheduled window.**
 
-**- Nozomi Networks — Reports > Configuration Changes, export for hunt window; GET /api/open/events?category=configuration_change&asset=<wallie_asset_id>.**
+**- Nozomi Networks - Reports > Configuration Changes, export for hunt window; API event query:**
+
+```text
+GET /api/open/events?category=configuration_change&asset=<wallie_asset_id>
+```
 
 **- Armis — Policy engine alerts for "Unauthorized Config Change" on WALL IE devices.**
 
@@ -409,8 +406,9 @@ snmpget -v2c -c <community> <wallie_ip> 1.3.6.1.2.1.1.3.0 >> wallie_sysuptime_$(
 
 **- Forescout eyeInspect — Inventory > Asset History per WALL IE; Threat Detection alerts of type Config Modification.**
 
+```text
 YARA scan for WALL IE admin session cookie artifacts staged for replay:
-
+```
 ```text
 yara -r C:\Users\pac\\claude\tools\rules\WALLIE_Session_Cookies.yar <user_profile_root> >> wallie_cookie_hits.txt
 ```
@@ -421,23 +419,14 @@ yara -r C:\Users\pac\\claude\tools\rules\WALLIE_Session_Cookies.yar <user_profil
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | cidr(RemoteAddressIP4, subnet=["<wallie_subnet>"])
-
 | RemotePort = "443"
-
 | -cidr(LocalAddressIP4, subnet=["<approved_admin_subnet>"])
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]), limit=100000)},
-
 field=[aid,RawProcessId],
-
 include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]
-
 )
-
 | table([ComputerName, FileName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName])
 ```
 
@@ -451,26 +440,23 @@ source:syslog host:<wallie_hostname_list> message:("config changed" OR "rule mod
 
 ```text
 Type: Log Alert
-
 Query: source:syslog host:<wallie_hostname_list> ("login" OR "config changed") -@user.name:(<approved_admin_list>)
-
 Evaluation window: last 10 minutes
-
 Alert condition: count > 0
-
 Message: "ALERT: WALL IE config change or login by unapproved user — investigate for post-Sweet32 credential abuse @ot-soc-pagerduty"
-
 Prerequisites: WALL IE syslog forwarding enabled with @user.name populated
-
 Create via: Monitors > New Monitor > Log Alert
 ```
 
-**Wireshark display filter — WALL IE admin sessions from unexpected source IPs:**
+**Wireshark display filter - WALL IE admin sessions from unexpected source IPs:**
 
+```text
 http.host matches "wallie" and not ip.src in {<approved_admin_subnet>}
+```
 
+```text
 tshark:
-
+```
 ```text
 tshark -r wallie_admin.pcap -Y 'http.host matches "wallie" and not ip.src in {<approved_admin_subnet>}' -T fields -e frame.time -e ip.src -e http.request.uri -e http.user_agent
 ```
@@ -497,371 +483,245 @@ Cloud: Datadog Log Management, Live Process Monitoring, CloudTrail integration f
 
 # Detection Signatures
 
-## SIGMA Rule 1 — 3DES TLS Handshake to WALL IE Management Interface
+## SIGMA Rule 1 - 3DES TLS Handshake to WALL IE Management Interface
 
-this rule targets the CVE-2016-2183 precondition — a TLS handshake negotiating a 3DES-CBC cipher suite to a WALL IE device. The detection uses the network_connection logsource and a cipher-suite field assumed to be populated by the firewall's TLS decrypt integration. Any hit is a vulnerable handshake that must be investigated for ongoing Sweet32 collection.
+This rule targets the CVE-2016-2183 precondition - a TLS handshake negotiating a 3DES-CBC cipher suite to a WALL IE device. The detection uses the network_connection logsource and a cipher-suite field assumed to be populated by the firewall's TLS decrypt integration. Any hit is a vulnerable handshake that must be investigated for ongoing Sweet32 collection.
 
-title: 3DES TLS Handshake to Helmholz WALL IE — Sweet32 Precondition
-
+```text
+title: 3DES TLS Handshake to Helmholz WALL IE - Sweet32 Precondition
 id: 4d9a2b71-6c0f-4e33-a514-1a9f42d1b8c3
-
 status: experimental
-
 description: TLS handshake negotiating a 3DES-CBC cipher suite to a Helmholz WALL IE device, satisfying the precondition for CVE-2016-2183 Sweet32 plaintext recovery.
-
 references:
-
-\- <https://certvde.com/en/advisories/VDE-2026-015/>
-
-\- <https://nvd.nist.gov/vuln/detail/CVE-2016-2183>
-
-\- <https://sweet32.info/>
-
+- https://certvde.com/en/advisories/VDE-2026-015/
+- https://nvd.nist.gov/vuln/detail/CVE-2016-2183
+- https://sweet32.info/
 author: 1898 & Co. Managed Threat Protection and Response for OT
-
 date: 2026-04-22
-
 tags:
-
-\- attack.collection
-
-\- attack.t0842
-
-\- attack.credential_access
-
+- attack.collection
+- attack.t0842
+- attack.credential_access
 logsource:
-
-category: network_connection
-
+  category: network_connection
 detection:
-
-tls_to_wallie:
-
-DestinationPort: 443
-
-DestinationIp|cidr: '<wallie_subnet>'
-
-weak_cipher:
-
-```text
-tls.cipher_suite|contains:
+  tls_to_wallie:
+    DestinationPort: 443
+    DestinationIp|cidr: '<wallie_subnet>'
+  weak_cipher:
+    tls.cipher_suite|contains:
+    - '3DES'
+    - 'DES_EDE'
+  condition: tls_to_wallie and weak_cipher
+falsepositives:
+- Internal vulnerability scanner deliberately probing legacy cipher support (scope scanner source IPs to the allowlist)
+level: high
 ```
 
-\- '3DES'
+## SIGMA Rule 2 - IPSec SA Established with 3DES Transform on WALL IE Peer
 
-\- 'DES_EDE'
+This rule targets the H2 hypothesis - an IPSec SA whose Phase 2 transform includes 3DES. The logsource is vendor-specific (firewall or VPN-concentrator syslog); the detection assumes the transform is logged as a structured field.
 
-condition: tls_to_wallie and weak_cipher
-
-falsepositives:
-
-\- Internal vulnerability scanner deliberately probing legacy cipher support (scope scanner source IPs to the allowlist)
-
-level: high
-
-## SIGMA Rule 2 — IPSec SA Established with 3DES Transform on WALL IE Peer
-
-targets the H2 hypothesis — an IPSec SA whose Phase 2 transform includes 3DES. The logsource is vendor-specific (firewall or VPN-concentrator syslog); the detection assumes the transform is logged as a structured field.
-
+```text
 title: IPSec SA Established with 3DES Transform on WALL IE Peer
-
 id: 9b1e4c02-3a8d-47f6-83cd-2e7a50d9c6f1
-
 status: experimental
-
 description: An IPSec child SA has been established with a 3DES encryption transform on a WALL IE peer, satisfying the precondition for CVE-2016-2183 Sweet32 plaintext recovery against the tunnel.
-
 references:
-
-\- <https://certvde.com/en/advisories/VDE-2026-015/>
-
-\- <https://nvd.nist.gov/vuln/detail/CVE-2016-2183>
-
+- https://certvde.com/en/advisories/VDE-2026-015/
+- https://nvd.nist.gov/vuln/detail/CVE-2016-2183
 author: 1898 & Co. Managed Threat Protection and Response for OT
-
 date: 2026-04-22
-
 tags:
-
-\- attack.collection
-
-\- attack.t0842
-
+- attack.collection
+- attack.t0842
 logsource:
-
-product: vpn
-
-service: ipsec
-
+  product: vpn
+  service: ipsec
 detection:
-
-sa_established:
-
-Message|contains:
-
-\- 'IKE Phase 2'
-
-\- 'child SA established'
-
-\- 'ESP SA'
-
-weak_transform:
-
-Message|contains:
-
-\- '3DES'
-
-\- 'DES_CBC'
-
-\- 'DES-CBC'
-
-peer_is_wallie:
-
-PeerAddress|cidr: '<wallie_subnet>'
-
-condition: sa_established and weak_transform and peer_is_wallie
-
+  sa_established:
+    Message|contains:
+    - 'IKE Phase 2'
+    - 'child SA established'
+    - 'ESP SA'
+  weak_transform:
+    Message|contains:
+    - '3DES'
+    - 'DES_CBC'
+    - 'DES-CBC'
+  peer_is_wallie:
+    PeerAddress|cidr: '<wallie_subnet>'
+  condition: sa_established and weak_transform and peer_is_wallie
 falsepositives:
-
-\- Deliberate interoperability testing of legacy tunnels during a documented maintenance window
-
+- Deliberate interoperability testing of legacy tunnels during a documented maintenance window
 level: high
+```
 
-## SIGMA Rule 3 — Unpatched WALL IE Firmware Present in Asset Inventory
+## SIGMA Rule 3 - Unpatched WALL IE Firmware Present in Asset Inventory
 
-covers H3 — any asset-inventory record for a WALL IE with firmware below 1.10.232 is an exposure. The product/service fields are loose to accommodate any of the OT asset-management integrations that forward into the SIEM.
+This rule covers H3 - any asset-inventory record for a WALL IE with firmware below 1.10.232 is an exposure. The product/service fields are loose to accommodate any of the OT asset-management integrations that forward into the SIEM.
 
+```text
 title: Unpatched Helmholz WALL IE Firmware Detected in Asset Inventory
-
 id: c2076a34-8fb5-4e1a-9db8-6c0b3e2147d0
-
 status: experimental
-
 description: An asset-inventory record indicates a Helmholz WALL IE with firmware below 1.10.232, the fixed version that addresses CVE-2016-2183 per VDE-2026-015.
-
 references:
-
-\- <https://certvde.com/en/advisories/VDE-2026-015/>
-
+- https://certvde.com/en/advisories/VDE-2026-015/
 author: 1898 & Co. Managed Threat Protection and Response for OT
-
 date: 2026-04-22
-
 tags:
-
-\- attack.reconnaissance
-
-\- attack.t1592
-
+- attack.reconnaissance
+- attack.t1592
 logsource:
-
-product: asset_inventory
-
+  product: asset_inventory
 detection:
-
-helmholz_wallie:
-
-device.vendor|contains: 'Helmholz'
-
-device.model|contains: 'WALL IE'
-
-vulnerable_fw:
-
-device.firmware_version|lt: '1.10.232'
-
-condition: helmholz_wallie and vulnerable_fw
-
+  helmholz_wallie:
+    device.vendor|contains: 'Helmholz'
+    device.model|contains: 'WALL IE'
+  vulnerable_fw:
+    device.firmware_version|lt: '1.10.232'
+  condition: helmholz_wallie and vulnerable_fw
 falsepositives:
-
-\- Test-bench unit deliberately held at an older firmware for interoperability verification
-
+- Test-bench unit deliberately held at an older firmware for interoperability verification
 level: medium
+```
 
-## Snort/Suricata Rule 1 — 3DES Cipher Suite Negotiated in TLS ClientHello to WALL IE
+## Snort/Suricata Rule 1 - 3DES Cipher Suite Negotiated in TLS ClientHello to WALL IE
 
-alert tcp any any -> [<wallie_subnet>] 443 (msg:"OT-HELMHOLZ CVE-2016-2183 3DES cipher suite in TLS ClientHello to WALL IE"; flow:to_server,established; content:"|16 03|"; depth:2; content:"|00 0a|"; within:200; threshold:type threshold, track by_src, count 1, seconds 60; classtype:policy-violation; sid:2026015001; rev:1; reference:cve,2016-2183; reference:url,certvde.com/en/advisories/VDE-2026-015/; metadata:service ssl;)
+```text
+alert tcp any any -> [<wallie_subnet>] 443 (
+msg:"OT-HELMHOLZ CVE-2016-2183 3DES cipher suite in TLS ClientHello to WALL IE";
+flow:to_server,established;
+content:"|16 03|"; depth:2;
+content:"|00 0a|"; within:200;
+threshold:type threshold, track by_src, count 1, seconds 60;
+classtype:policy-violation;
+sid:2026015001; rev:1;
+reference:cve,2016-2183;
+reference:url,certvde.com/en/advisories/VDE-2026-015/;
+metadata:service ssl;
+)
+```
 
-## Snort/Suricata Rule 2 — Long-Lived ESP Tunnel to WALL IE Exceeding Sweet32 Threshold
+## Snort/Suricata Rule 2 - Long-Lived ESP Tunnel to WALL IE Exceeding Sweet32 Threshold
 
-alert ip any any -> [<wallie_subnet>] any (msg:"OT-HELMHOLZ CVE-2016-2183 Long-lived ESP session to WALL IE peer — Sweet32 threshold approach"; ip_proto:50; threshold:type both, track by_dst, count 50000000, seconds 86400; classtype:policy-violation; sid:2026015002; rev:1; reference:cve,2016-2183; metadata:service ipsec;)
+```text
+alert ip any any -> [<wallie_subnet>] any (
+msg:"OT-HELMHOLZ CVE-2016-2183 Long-lived ESP session to WALL IE peer - Sweet32 threshold approach";
+ip_proto:50;
+threshold:type both, track by_dst, count 50000000, seconds 86400;
+classtype:policy-violation;
+sid:2026015002; rev:1;
+reference:cve,2016-2183;
+metadata:service ipsec;
+)
+```
 
-## YARA Rule 1 — Sweet32 Exploit Tooling on Disk
+## YARA Rule 1 - Sweet32 Exploit Tooling on Disk
 
-scans admin and engineering workstations for the published Sweet32 PoC family, including Python adaptations of the original 2016 tooling and compiled binaries bearing the characteristic marker strings. The condition uses an any-of over the distinctive identifiers; the attack-tooling signatures are highly specific to reduce false positives.
+This rule scans admin and engineering workstations for the published Sweet32 PoC family, including Python adaptations of the original 2016 tooling and compiled binaries bearing the characteristic marker strings. The condition uses an any-of over the distinctive identifiers; the attack-tooling signatures are highly specific to reduce false positives.
 
+```text
 rule Sweet32_Exploit_Tooling
-
 {
-
 meta:
-
-```text
 description = "Detects Sweet32 (CVE-2016-2183) birthday-bound attack PoC tooling"
-
 author = "1898 & Co. Managed Threat Protection and Response for OT"
-
 date = "2026-04-22"
-
 reference = "<https://sweet32.info/>"
-```
-
 strings:
-
 $cve = "CVE-2016-2183" ascii
-
 $sweet32 = "Sweet32" ascii nocase
-
 $birthday = "birthday bound" ascii nocase
-
 $py1 = "def collect_3des_blocks" ascii
-
 $py2 = "def find_collision" ascii
-
 $mk1 = "3DES_EDE_CBC" ascii
-
 $mk2 = "TLS_RSA_WITH_3DES_EDE_CBC_SHA" ascii
-
 condition:
-
 any of ($cve, $sweet32, $birthday) or (any of ($py1, $py2) and any of ($mk1, $mk2))
-
 }
+```
 
-## YARA Rule 2 — Helmholz Firmware Image Detection
+## YARA Rule 2 - Helmholz Firmware Image Detection
 
-identifies Helmholz WALL IE firmware images on staging hosts so analysts can cross-check the version of each staged image against the fix-target 1.10.232. The rule does not distinguish legitimate from forged images — it is a classifier for where firmware has been staged.
+This rule identifies Helmholz WALL IE firmware images on staging hosts so analysts can cross-check the version of each staged image against the fix-target 1.10.232. The rule does not distinguish legitimate from forged images - it is a classifier for where firmware has been staged.
 
+```text
 rule Helmholz_Firmware_Image
-
 {
-
 meta:
-
-```text
 description = "Identifies Helmholz WALL IE firmware images for inventory cross-check"
-
 author = "1898 & Co. Managed Threat Protection and Response for OT"
-
 date = "2026-04-22"
-
 reference = "<https://certvde.com/en/advisories/VDE-2026-015/>"
-```
-
 strings:
-
 $banner = "WALL IE" ascii
-
 $vendor = "Helmholz" ascii
-
 $model = "700-860-WAL01" ascii
-
 $magic = { 48 46 57 31 }
-
 condition:
-
 ($magic at 0) or (2 of ($banner, $vendor, $model))
-
 }
+```
 
-## YARA Rule 3 — IPSec 3DES Policy in Configuration Files
+## YARA Rule 3 - IPSec 3DES Policy in Configuration Files
 
-scans VPN peer configuration files (strongSwan, racoon, Cisco, pfSense, etc.) for explicit 3DES policy entries that would cause the peer to negotiate a Sweet32-vulnerable transform with a WALL IE. Hits indicate configuration-level remediation is needed in addition to firmware upgrade.
+This rule scans VPN peer configuration files (strongSwan, racoon, Cisco, pfSense, etc.) for explicit 3DES policy entries that would cause the peer to negotiate a Sweet32-vulnerable transform with a WALL IE. Hits indicate configuration-level remediation is needed in addition to firmware upgrade.
 
+```text
 rule IPSec_3DES_Policy
-
 {
-
 meta:
-
-```text
 description = "Detects IPSec peer configurations permitting 3DES transforms (Sweet32 precondition)"
-
 author = "1898 & Co. Managed Threat Protection and Response for OT"
-
 date = "2026-04-22"
-
 reference = "<https://certvde.com/en/advisories/VDE-2026-015/>"
+strings:
+$tok1 = "3des-cbc" ascii nocase
+$tok2 = "esp=3des" ascii nocase
+$tok3 = "encryption_algorithm = 3des" ascii nocase
+$tok4 = "crypto ipsec transform-set" ascii nocase
+$tok5 = "esp-3des" ascii nocase
+condition:
+any of them
+}
 ```
 
-strings:
+## YARA Rule 4 - Standing Credential Dump Tool Memory Artifacts
 
-$tok1 = "3des-cbc" ascii nocase
-
-$tok2 = "esp=3des" ascii nocase
-
-$tok3 = "encryption_algorithm = 3des" ascii nocase
-
-$tok4 = "crypto ipsec transform-set" ascii nocase
-
-$tok5 = "esp-3des" ascii nocase
-
-condition:
-
-any of them
-
-}
-
-## YARA Rule 4 — Standing Credential Dump Tool Memory Artifacts
-
-the WALL IE admin jump host is a Windows admin tier and a likely lateral-movement target once Sweet32-recovered admin tokens are abused. This rule covers mimikatz, WCE, gsecdump, comsvcs MiniDump, and generic LSASS memory-read primitives. Note: Windows-only coverage — if the admin jump host is Linux, write a separate T1003.007 /proc rule alongside it.
-
-rule Credential_Dump_Tool_Memory_Artifacts
-
-{
-
-meta:
+This rule covers mimikatz, WCE, gsecdump, comsvcs MiniDump, and generic LSASS memory-read primitives. Note: Windows-only coverage - if the admin jump host is Linux, write a separate T1003.007 /proc rule alongside it.
 
 ```text
+rule Credential_Dump_Tool_Memory_Artifacts
+{
+meta:
 description = "Detects memory-resident artifacts of common Windows LSASS credential dumping tools"
-
 author = "1898 & Co. Managed Threat Protection and Response for OT"
-
 date = "2026-04-22"
-
 reference = "<https://attack.mitre.org/techniques/T1003/>"
-```
-
 strings:
-
 $mk_cmd1 = "sekurlsa::logonpasswords" ascii wide
-
 $mk_cmd2 = "lsadump::sam" ascii wide
-
 $mk_cmd3 = "privilege::debug" ascii wide
-
 $mk_name = "mimikatz" ascii wide
-
 $mk_hex = { 6d 69 6d 69 6b 61 74 7a }
-
 $wce_name = "wce.exe" ascii wide
-
 $wce_lsass = "lsass.exe" ascii wide
-
 $gsec = "gsecdump" ascii wide
-
 $cs_minidump = "MiniDump" ascii wide
-
 $cs_comsvcs = "comsvcs" ascii wide
-
 $cs_lsass = "lsass.exe" ascii wide
-
 $api1 = "NtReadVirtualMemory" ascii wide
-
 $api2 = "ReadProcessMemory" ascii wide
-
 condition:
-
 (2 of ($mk_cmd1, $mk_cmd2, $mk_cmd3, $mk_name, $mk_hex)) or
-
 ($wce_name and $wce_lsass) or
-
 $gsec or
-
 ($cs_minidump and $cs_comsvcs and $cs_lsass) or
-
 (($api1 or $api2) and $cs_lsass and (any of ($mk_name, $wce_name, $gsec)))
-
 }
+```
 
 Execution notes: SeDebugPrivilege is required for LSASS memory scans. On Windows, invoke yara -p <pid> locally or enumerate across hosts via CrowdStrike Falcon RTR runscript.
 

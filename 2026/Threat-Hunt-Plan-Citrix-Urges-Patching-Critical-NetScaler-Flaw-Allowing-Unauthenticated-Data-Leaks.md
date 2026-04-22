@@ -445,8 +445,9 @@ tshark -r /tmp/lateral_rdp\_\*.pcap \\
 
 -T fields -e frame.time -e ip.src -e ntlmssp.auth.username -e ntlmssp.auth.domain \\
 
+```text
 | sort -k3 | uniq -d -f2 \\
-
+```
 \>\> /tmp/ntlm_relay_candidates.txt
 
 #### Datadog Log Analytics — Top accounts used for RDP or WinRM access from gateway IPs
@@ -683,12 +684,11 @@ strings:
 
 \$tool3 = "python" ascii wide
 
+```text
 condition:
-
 any of (\$daemon\*) and any of (\$shell\*, \$tool\*)
-
 }
-
+```
 This rule targets memory artifacts from common credential dumping tools known to be used in post-NetScaler-exploitation lateral movement chains. The condition branches independently check for Mimikatz, WCE, gsecdump, and comsvcs MiniDump patterns, with a catch-all branch for memory-read API strings co-occurring with lsass. The rule requires SeDebugPrivilege-level process access to execute YARA against LSASS; use CrowdStrike RTR for remote execution. Note: This rule targets Windows LSASS tooling and will not match Linux-specific credential dumping (T1003.007). In environments with Linux runner pools or containers, include a separate Linux YARA rule (see below).
 
 ```text
@@ -747,10 +747,10 @@ strings:
 
 \$lsass = "lsass.exe" ascii wide nocase
 
+```text
 condition:
-
 any of (\$mimi\*) or
-
+```
 (\$wce1 and \$wce2) or
 
 \$gsec1 or
@@ -797,8 +797,9 @@ strings:
 
 \$oversize = { 3C 4E 61 6D 65 49 44 \[1-8200\] 3C 2F 4E 61 6D 65 49 44 3E }
 
+```text
 condition:
-
+```
 (\$saml_req or \$saml_auth or \$saml_idp) and (\$bin_marker or \$oversize)
 
 }
@@ -857,8 +858,9 @@ strings:
 
 \$script3 = "memory read" ascii wide nocase
 
+```text
 condition:
-
+```
 (\$nuclei1 and \$nuclei2) or
 
 (\$nuclei4) or

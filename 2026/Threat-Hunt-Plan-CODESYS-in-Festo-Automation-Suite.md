@@ -828,8 +828,9 @@ strings:
 
 \$tool_revshell = /cmd\\exe.\*\\c.\*powershell.\*\\\[Ee\]nc/ wide ascii
 
+```text
 condition:
-
+```
 (any of (\$path\_\*)) and (any of (\$tool\_\*))
 
 }
@@ -888,8 +889,9 @@ strings:
 
 \$lsass = "lsass.exe" wide ascii
 
+```text
 condition:
-
+```
 (2 of (\$mimi\_\*)) or
 
 (all of (\$wce\_\*)) or
