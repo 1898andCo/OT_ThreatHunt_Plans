@@ -41,7 +41,7 @@ CrowdStrike Falcon — Runner.Worker process spawning unexpected children (GitHu
 
 // Runner.Worker is the GitHub Actions runner host process; unexpected children indicate payload execution
 
-```bash
+```text
 #event_simpleName = "ProcessRollup2"
 | ParentBaseFileName = "Runner.Worker"
 | table([ComputerName, FileName, CommandLine, ParentBaseFileName, SHA256HashData, ImageFileName, timestamp])
@@ -59,7 +59,7 @@ yara -r -p 4 /tmp/TeamPCP_Cloud_Stealer_Script.yar /home /tmp /var /opt >> /tmp/
 
 Windows Event ID collection (Windows-hosted runners only) — Process creation for trivy:
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=(Get-Date).AddDays(-3)} |
 Where-Object { $\_.Properties[5].Value -match 'trivy' -or $\_.Properties[9].Value -match 'trivy' } |
 Select-Object TimeCreated,@{N='NewProcess';E={$\_.Properties[5].Value}},@{N='CmdLine';E={$\_.Properties[8].Value}},@{N='ParentProcess';E={$\_.Properties[13].Value}} |
@@ -70,7 +70,7 @@ Datadog Log Search — Container/Kubernetes logs for trivy execution and unexpec
 
 // time range: 2026-03-19T17:00Z to 2026-03-20T00:00Z
 
-```bash
+```text
 source:kubernetes message:"trivy" @kubernetes.namespace_name:\* status:error
 // Follow-up: look for python3 or curl launched in the same container/pod immediately after trivy
 source:kubernetes (message:"python3" OR message:"curl") @kubernetes.pod_name:\*
@@ -79,7 +79,7 @@ source:kubernetes (message:"python3" OR message:"curl") @kubernetes.pod_name:\*
 
 Datadog Live Process Monitoring (Infrastructure \> Processes — NOT a log source):
 
-```bash
+```text
 command:trivy
 // Review spawned children in the process tree; look for python3, curl, or wget as immediate children
 command:python3 user:root
@@ -129,7 +129,7 @@ ip.addr == 45.148.10.212 && tcp.port == 443
 
 // tshark equivalent:
 
-```bash
+```text
 tshark -r /tmp/trivy_hunt\_\*.pcap -Y "ip.addr == 45.148.10.212 && tcp.port == 443" \\
 -T fields -e frame.time -e ip.src -e ip.dst -e tcp.port -e http2.headers.method 2>/dev/null
 ```
@@ -158,15 +158,10 @@ Windows Event Log analysis — Parent-child process chain from trivy (Windows ru
 
 \$trivyProcs = Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=(Get-Date).AddDays(-3)} |
 
-```powershell
+```text
 Where-Object { $\_.Properties[5].Value -match 'trivy' }
-```
-
-\$trivyProcs | ForEach-Object {
-
-\$pid = $_.Properties\[6\].Value
-
-```powershell
+$trivyProcs | ForEach-Object {
+$pid = $_.Properties\[6\].Value
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=$\_.TimeCreated; EndTime=$\_.TimeCreated.AddSeconds(10)} |
 Where-Object { $\_.Properties[13].Value -match [regex]::Escape($pid) } |
 Select-Object TimeCreated,@{N='ChildProcess';E={$\_.Properties[5].Value}},@{N='CmdLine';E={$\_.Properties[8].Value}}
@@ -212,7 +207,7 @@ CrowdStrike Falcon — Any process on runner hosts spawned by trivy or Runner.Wo
 
 CrowdStrike Falcon — CriticalFile events on /proc paths (if Linux file telemetry is enabled):
 
-```bash
+```text
 #event_simpleName = "CriticalFile"
 | TargetFileName = /\\proc\[0-9]+\\mem/i
 | table([ComputerName, TargetFileName, ContextProcessId, timestamp])
@@ -235,7 +230,7 @@ yara -r -p 4 /tmp/TeamPCP_Cloud_Stealer_Script.yar / --exclude-dirs /proc --excl
 
 Windows Event ID collection (Windows runners with Sysmon) — File access on sensitive paths:
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; Id=10; StartTime=(Get-Date).AddDays(-3)} |
 Where-Object { $\_.Properties[5].Value -match 'Runner.Worker' -or $\_.Properties[9].Value -match 'Runner.Worker' } |
 Select-Object TimeCreated,@{N='SourceProcess';E={$\_.Properties[5].Value}},@{N='TargetProcess';E={$\_.Properties[9].Value}} |
@@ -290,7 +285,7 @@ frame.time_relative \>= 0 && ip.dst != 10.0.0.0/8 && tcp.flags.syn == 1
 
 // tshark:
 
-```bash
+```text
 tshark -r /tmp/runner\_\*.pcap -Y "ip.dst != 10.0.0.0/8 and tcp.flags.syn == 1" \\
 -T fields -e frame.time_epoch -e ip.src -e ip.dst -e tcp.dstport 2>/dev/null | head -100
 ```
@@ -374,7 +369,7 @@ CrowdStrike Falcon — Outbound HTTPS connections to any non-RFC-1918 address fr
 
 // Capture all external connections initiated by Python processes — broaden scope if C2 rotates
 
-```bash
+```text
 #event_simpleName = "NetworkConnectIP4"
 | join(
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]), limit=100000)},
@@ -393,7 +388,7 @@ sudo tcpdump -i eth0 -w /tmp/c2_hunt\_%Y%m%d\_%H%M%S.pcap -G 300 -C 100 \\
 
 Windows Event ID collection (Windows runners) — Network connections from python:
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156; StartTime=(Get-Date).AddDays(-3)} |
 Where-Object { $\_.Properties[1].Value -match 'python' } |
 Select-Object TimeCreated,@{N='Application';E={$\_.Properties[1].Value}},@{N='DestAddr';E={$\_.Properties[5].Value}},@{N='DestPort';E={$\_.Properties[6].Value}} |
@@ -456,7 +451,7 @@ tls.handshake.extensions_server_name contains "aquasecurtiy"
 
 // tshark:
 
-```bash
+```text
 tshark -r /tmp/c2_hunt\_\*.pcap \\
 ```
 
@@ -486,11 +481,7 @@ Datadog Monitor — Alert on outbound connection to TeamPCP C2 IP in network log
 
 ```text
 Type: Log Alert
-```
-
 Query: @network.destination.ip:45.148.10.212
-
-```text
 Evaluation window: last 5 minutes
 Alert condition: count > 0
 Message: "ALERT: Outbound connection to TeamPCP C2 IP 45.148.10.212 detected from @host — immediate network isolation of runner host required @security-oncall"
@@ -507,7 +498,7 @@ source:datadog @evt.category:api_key_management @evt.name:api_key_created
 
 Windows Event Log — DNS resolution events for typosquatted domain (Windows runners):
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-DNS-Client/Operational'; Id=3008; StartTime=(Get-Date).AddDays(-3)} |
 Where-Object { $\_.Message -match 'aquasecurtiy' } |
 Select-Object TimeCreated,@{N='DomainName';E={$\_.Properties[0].Value}} |
@@ -522,7 +513,7 @@ MITRE ATT&CK: Exfiltration | T1567.001 — Exfiltration Over Web Service: Exfilt
 
 CrowdStrike Falcon — HTTPS connections to api.github.com from Python processes (fallback C2 path):
 
-```bash
+```text
 #event_simpleName = "DnsRequest"
 | DomainName = "api.github.com"
 | join(
@@ -541,7 +532,7 @@ sudo tcpdump -i eth0 -w /tmp/github_api\_%Y%m%d\_%H%M%S.pcap -G 300 -C 50 \\
 
 Windows Event ID collection (Windows runners) — GitHub API connections from python processes:
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156; StartTime=(Get-Date).AddDays(-3)} |
 Where-Object { $\_.Properties[5].Value -eq '140.82.114.5' -or $\_.Properties[5].Value -match '192\\30\\' } |
 Select-Object TimeCreated,@{N='App';E={$\_.Properties[1].Value}},@{N='DestIP';E={$\_.Properties[5].Value}} |
@@ -592,7 +583,7 @@ tls.handshake.extensions_server_name == "api.github.com"
 
 // tshark:
 
-```bash
+```text
 tshark -r /tmp/github_api\_\*.pcap \\
 ```
 
@@ -660,7 +651,7 @@ GitHub Audit Logs: GitHub organization audit log streaming enabled and forwardin
 
 The following SIGMA rule detects the malicious Trivy binary spawning unexpected child processes consistent with TeamPCP Cloud Stealer execution. Trivy is a scanner and should only spawn short-lived scanner child processes; the presence of python3, curl, wget, or sh as children is highly anomalous.
 
-```yaml
+```text
 title: TeamPCP Malicious Trivy Binary Spawning Unexpected Child Process
 id: a4f1c2d3-8b5e-4a7f-9c0d-1e2f3a4b5c6d
 status: experimental
@@ -692,7 +683,7 @@ level: critical
 ```
 The following SIGMA rule detects DNS resolution of the TeamPCP typosquatted C2 domain. The domain aquasecurtiy\[.\]org is a deliberate misspelling of aquasecurity.org and has no legitimate use.
 
-```bash
+```text
 title: TeamPCP C2 Typosquatted Domain DNS Resolution
 id: b5e2d3f4-9c6a-4b8e-0d1f-2a3b4c5d6e7f
 status: stable
@@ -702,7 +693,7 @@ references:
 
 \- https://www.stepsecurity.io/blog/trivy-compromised-a-second-time---malicious-v0-69-4-release
 
-```yaml
+```text
 author: 1898 & Co. Threat Hunt Team
 date: 2026-03-20
 tags:
@@ -722,7 +713,7 @@ level: critical
 ```
 The following SIGMA rule detects outbound network connections from Python processes to the TeamPCP C2 IP address or Cloudflare Tunnel secondary C2. This rule targets Linux-based CI/CD runners where the credential stealer runs as a Python script.
 
-```yaml
+```text
 title: TeamPCP Cloud Stealer Outbound C2 Connection from Python Process
 id: c6f3e4g5-0d7b-5c9f-1e2a-3b4c5d6e7f8a
 status: experimental
@@ -751,7 +742,7 @@ level: critical
 ```
 The following SIGMA rule detects Python processes reading /proc/\<pid\>/mem files, which is the mechanism used by TeamPCP Cloud Stealer to extract in-memory GitHub Actions secrets from the Runner.Worker process.
 
-```yaml
+```text
 title: Python Process Reading /proc/pid/mem — Potential In-Memory Secret Extraction
 id: d7a4f5h6-1e8c-6d0a-2f3b-4c5d6e7f8a9b
 status: experimental
@@ -780,6 +771,7 @@ level: high
 ```
 Snort/Suricata rule detecting HTTPS connection attempts to the TeamPCP primary C2 IP, using TLS Server Name Indication (SNI) matching to catch the typosquatted domain even over TLS. This rule requires TLS inspection or JA3 fingerprinting capabilities at the network perimeter.
 
+```text
 alert tls any any -\> 45.148.10.212 443 (
 
 msg:"TeamPCP C2 TLS Connection to scan.aquasecurtiy.org - Supply Chain Attack C2";
@@ -799,9 +791,11 @@ reference:url,stepsecurity.io/blog/trivy-compromised-a-second-time---malicious-v
 metadata:affected_product GitHub_Actions, attack_target CI_CD_Runner, deployment Perimeter, signature_severity Critical;
 
 )
+```
 
 Snort/Suricata rule detecting DNS queries for the typosquatted aquasecurtiy domain, matching on the misspelled string regardless of subdomain prefix. Deploy on all DNS inspection points serving CI/CD runner infrastructure.
 
+```text
 alert dns any any -\> any 53 (
 
 msg:"TeamPCP Typosquatted C2 Domain DNS Query - aquasecurtiy.org";
@@ -819,10 +813,11 @@ reference:url,stepsecurity.io/blog/trivy-compromised-a-second-time---malicious-v
 metadata:affected_product GitHub_Actions, attack_target CI_CD_Runner, deployment DNS_Inspection, signature_severity Critical;
 
 )
+```
 
 The following YARA rule targets the TeamPCP Cloud Stealer Python script on disk or in temporary storage. The rule combines three independent detection clusters: the in-memory secret extraction cluster (isSecret + Runner.Worker + /proc), the C2 communication cluster (typosquatted domain + exfiltration header), and the encryption cluster (RSA-OAEP + AES operations). Any one cluster is sufficient for a high-confidence hit. The /proc-based detection is Linux-specific and will not fire on Windows runners. False positives are highly unlikely given the specificity of isSecret + Runner.Worker as co-occurring strings outside of this malware context.
 
-```yara
+```text
 rule TeamPCP_Cloud_Stealer_Script {
 ```
 
@@ -884,7 +879,7 @@ yara -r -p 4 TeamPCP_Cloud_Stealer_Script.yar /home /tmp /var /opt /root --exclu
 
 The following YARA rule targets TeamPCP Cloud Stealer indicators in the memory of running Python processes. The rule is structured to match residual heap strings that would be present if the stealer executed or was loaded but not yet unloaded. The condition requires co-occurrence of the target secret key with either the target process name or the C2 domain to reduce false positives against general Python security tooling that may reference isSecret or /proc in isolation.
 
-```yara
+```text
 rule TeamPCP_Cloud_Stealer_Memory {
 ```
 
@@ -932,7 +927,7 @@ for pid in \$(pgrep python3); do sudo yara -p 2 TeamPCP_Cloud_Stealer_Memory.yar
 
 The following YARA rule is the standing credential dump memory scan rule required for any hunt plan involving T1003.\* techniques. Although TeamPCP's primary credential harvesting mechanism targets Linux /proc memory (T1003.007), this rule is included to cover Windows runner environments where LSASS-based credential dumping tools may be used for post-compromise privilege escalation.
 
-```yara
+```text
 rule Credential_Dump_Tool_Memory_Artifacts {
 ```
 

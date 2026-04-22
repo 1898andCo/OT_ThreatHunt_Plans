@@ -47,13 +47,13 @@ CrowdStrike Falcon FQL — hunt web-client processes on admin hosts invoking lon
 
 BPF packet capture on the wireless-edge SPAN feed — isolate SD-330AC management plane into a rolling 24-hour capture set:
 
-```bash
+```text
 tcpdump -i <span_iface> -G 3600 -W 24 -C 500 -w /var/pcap/silex-mgmt-%Y%m%d%H.pcap '(host <silex_ip_list>) and (tcp port 80 or tcp port 443 or tcp port 8443)'
 ```
 
 BPF packet capture — rate-limited capture of long-POST bodies for offline analysis:
 
-```bash
+```text
 tcpdump -i <span_iface> -G 3600 -W 24 -s 0 -w /var/pcap/silex-body-%Y%m%d%H.pcap 'tcp dst port 80 and dst host <silex_ip_list> and tcp[tcpflags] & tcp-push != 0'
 ```
 
@@ -73,7 +73,7 @@ source:windows (message:"redirect=" OR message:"SD-330AC" OR message:"AMC Manage
 
 Datadog Live Process Monitoring (Infrastructure \> Processes) — admin-host curl/wget/python with long redirect parameters:
 
-```bash
+```text
 command:curl user:\* OR command:python user:\*
 // Free-text filter: redirect= OR SD-330AC OR login-redirect
 ```
@@ -93,7 +93,7 @@ Windows Event IDs to collect on admin/AMC Manager hosts — forward via WEF or u
 
 \- 4104 (PowerShell ScriptBlock) — PowerShell sessions touching SD-330AC IPs
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=(Get-Date).AddDays(-30)} | Where-Object { $\_.Message -match '(curl|wget|python|Invoke-WebRequest|Invoke-RestMethod)' -and $\_.Message -match 'redirect=' } | Export-Csv -Path C:\hunt\silex-h1-proc.csv -NoTypeInformation
 ```
 
@@ -111,7 +111,7 @@ OT Data Collection: Forescout eyeInspect — Inventory \> Devices \> Export; GET
 
 SNMP polling — rolling switch-port and device-side counter collection:
 
-```bash
+```text
 snmpwalk -v2c -c <community> <switch_ip> IF-MIB::ifTable
 snmpget -v2c -c <community> <switch_ip> IF-MIB::ifInOctets.<ifIndex> IF-MIB::ifOutOctets.<ifIndex> IF-MIB::ifInErrors.<ifIndex> IF-MIB::ifOutErrors.<ifIndex>
 snmpwalk -v2c -c <community> <silex_ip> system
@@ -143,7 +143,7 @@ Wireshark display filter — POST body with oversized redirect parameter in capt
 
 http.request.method == "POST" and http.request.uri contains "login" and tcp.len \> 512
 
-```bash
+```text
 tshark -r silex-body-\*.pcap -Y 'http.request.method == "POST" and http.request.uri contains "login"' -T fields -e frame.time -e ip.src -e ip.dst -e http.content_length >> tshark-silex-longpost.txt
 ```
 
@@ -151,7 +151,7 @@ Wireshark display filter — outbound connections initiated by SD-330AC IP (post
 
 ip.src == \<silex_ip\> and tcp.flags.syn == 1 and tcp.flags.ack == 0
 
-```bash
+```text
 tshark -r silex-mgmt-\*.pcap -Y 'ip.src in {<silex_ip_list>} and tcp.flags.syn == 1 and tcp.flags.ack == 0' -T fields -e frame.time -e ip.src -e ip.dst -e tcp.dstport >> tshark-silex-egress.txt
 ```
 
@@ -183,7 +183,7 @@ Prerequisites: Palo Alto NGFW syslog forwarding to Datadog with URL filtering an
 
 Windows Event Log PowerShell analysis — correlate 4688 process creations on admin/AMC Manager hosts with Silex-directed connections:
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=(Get-Date).AddDays(-30)} | Where-Object { $\_.Message -match '(curl|wget|python|Invoke-WebRequest)' } | Select-Object TimeCreated,@{N='CmdLine';E={$\_.Properties[8].Value}},@{N='Account';E={$\_.Properties[1].Value}} | Export-Csv -Path C:\hunt\silex-h1-ps.csv -NoTypeInformation
 ```
 
@@ -213,7 +213,7 @@ Defense Evasion | T1078.001 — Default Accounts | Takeover of a factory-default
 
 Datadog Log Search — capture NGFW/WAF HTTP logs for successful admin logons to Silex management IPs from non-admin source ranges:
 
-```yaml
+```text
 source:paloalto @dest.ip:(<silex_subnet_1> OR <silex_subnet_2>) @status:200 @url.path:(\*login\* OR \*admin\* OR \*password\*) -@network.client.ip:<admin_subnet>
 // time range: now - 30d to now; Analytics Top List view; group by @network.client.ip
 ```
@@ -233,7 +233,7 @@ command:silex user:\* OR command:amcmanager user:\* OR command:python user:\*
 
 BPF capture — capture Silex authentication traffic:
 
-```bash
+```text
 tcpdump -i <span_iface> -G 3600 -W 48 -C 500 -w /var/pcap/silex-auth-%Y%m%d%H.pcap 'tcp and (tcp port 80 or tcp port 443 or tcp port 8443) and (host <silex_ip_list>)'
 ```
 
@@ -243,7 +243,7 @@ Windows Event IDs to collect:
 
 \- 4104 (PowerShell ScriptBlock) invocations touching Silex management endpoints
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-PowerShell/Operational'; Id=4104; StartTime=(Get-Date).AddDays(-30)} | Where-Object { $\_.Message -match '(SD-330AC|AMC Manager|set-password|factory-default)' } | Export-Csv -Path C:\hunt\silex-h2-ps.csv -NoTypeInformation
 ```
 
@@ -271,7 +271,7 @@ OT Data Collection: Forescout eyeInspect — Threat Detection panel; inspect HTT
 
 Datadog Log Analytics — identify source IPs outside the admin allowlist that successfully authenticated to SD-330AC:
 
-```yaml
+```text
 source:paloalto @dest.ip:(<silex_subnet_1> OR <silex_subnet_2>) @status:200 @url.path:\*login\* -@network.client.ip:<admin_subnet>
 // Use Table view; group by @network.client.ip, @usr.name; time range last 30 days
 ```
@@ -284,7 +284,7 @@ source:datadog @evt.category:user_management @evt.name:(role_change OR user_crea
 
 Datadog Monitor (required):
 
-```yaml
+```text
 Type: Log Alert
 Query: source:paloalto @dest.ip:(<silex_subnet_1> OR <silex_subnet_2>) @status:200 @url.path:\*login\* -@network.client.ip:<admin_subnet>
 Evaluation window: last 10 minutes
@@ -296,7 +296,7 @@ Wireshark display filter — inspect authentication headers and cookies reaching
 
 http.cookie or http.authorization and ip.dst in {\<silex_ip_list\>}
 
-```bash
+```text
 tshark -r silex-auth-\*.pcap -Y 'http.authorization or http.cookie' -T fields -e frame.time -e ip.src -e ip.dst -e http.authorization -e http.cookie >> tshark-silex-auth.txt
 ```
 
@@ -336,7 +336,7 @@ source:syslog (message:"firmware" OR message:"reboot" OR message:"coldStart" OR 
 
 BPF capture — firmware transfer HTTP(S) activity toward Silex converters:
 
-```bash
+```text
 tcpdump -i <span_iface> -G 3600 -W 48 -C 500 -w /var/pcap/silex-fw-%Y%m%d%H.pcap 'host <silex_ip_list> and (tcp port 80 or tcp port 443 or tcp port 8443)'
 ```
 
@@ -359,7 +359,7 @@ yara -r /opt/yara/rules/silex_tampered_fw.yar /mnt/forensic/ /var/firmware-stagi
 
 Windows Event IDs to collect — on admin/AMC Manager host that might have initiated the firmware update:
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=(Get-Date).AddDays(-30)} | Where-Object { $\_.Message -match '(AMCManager|silex|firmware|\\bin|\\img|\\rom)' } | Export-Csv -Path C:\hunt\silex-h3-fwadmin.csv -NoTypeInformation
 ```
 
@@ -396,13 +396,13 @@ Wireshark display filter — firmware POST to SD-330AC web interface:
 
 http.request.method == "POST" and (http.request.uri contains "firmware" or http.request.uri contains "upload") and ip.dst in {\<silex_ip_list\>}
 
-```bash
+```text
 tshark -r silex-fw-\*.pcap -Y 'http.request.method == "POST" and http.request.uri contains "firmware"' -T fields -e frame.time -e ip.src -e ip.dst -e http.content_length >> tshark-silex-fwpost.txt
 ```
 
 OT Protocol Analysis — compare current SD-330AC firmware hashes to known-good vendor firmware 1.50 hashes via OT platform APIs (Claroty, Nozomi, Forescout); any mismatch is automatic escalation
 
-```powershell
+```text
 YARA memory scan — on any Windows AMC Manager host suspected to have pushed firmware:
 Get-Process | Where-Object { $\_.ProcessName -match 'AMCManager|curl|wget|python' } | ForEach-Object { yara -p $\_.Id C:\hunt\rules\silex_tampered_fw.yar >> C:\hunt\yara-silex-fw-mem.txt }
 ```
@@ -423,7 +423,7 @@ Impact | T0831 — Manipulation of Control (ICS) | Injection or alteration of se
 
 BPF capture — east-west from SD-330AC IP into OT/medical device VLANs:
 
-```bash
+```text
 tcpdump -i <ot_span_iface> -G 3600 -W 48 -C 500 -w /var/pcap/silex-eastwest-%Y%m%d%H.pcap 'src host <silex_ip> and not (dst host <admin_jump_host_list>)'
 ```
 
@@ -465,13 +465,13 @@ Historian/SCADA alarm correlation — pull OSI PI, GE Proficy, or AVEVA System P
 
 Windows Event IDs to collect — on engineering workstations and historian/SCADA servers:
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156; StartTime=(Get-Date).AddDays(-30)} | Where-Object { $\_.Message -match '<silex_ip_pattern>' } | Export-Csv -Path C:\hunt\silex-h4-wfp.csv -NoTypeInformation
 ```
 
 SNMP polling — hunt for interface error/utilization spikes on switch ports facing OT/medical endpoints downstream of the SD-330AC:
 
-```bash
+```text
 snmpwalk -v2c -c <community> <ot_switch_ip> IF-MIB::ifTable
 snmpget -v2c -c <community> <ot_switch_ip> IF-MIB::ifInOctets.<plc_port> IF-MIB::ifInErrors.<plc_port>
 ```
@@ -482,7 +482,7 @@ Wireshark display filter — EtherNet/IP CIP service code analysis from SD-330AC
 
 cip and ip.src == \<silex_ip\>
 
-```bash
+```text
 tshark -r silex-eastwest-\*.pcap -Y 'cip and ip.src == <silex_ip>' -T fields -e frame.time -e ip.src -e ip.dst -e cip.service >> tshark-silex-cip.txt
 ```
 
@@ -490,7 +490,7 @@ Wireshark display filter — Modbus function-code review:
 
 modbus and ip.src == \<silex_ip\>
 
-```bash
+```text
 tshark -r silex-eastwest-\*.pcap -Y 'modbus and ip.src == <silex_ip>' -T fields -e frame.time -e mbtcp.trans_id -e modbus.func_code >> tshark-silex-modbus.txt
 ```
 
@@ -525,7 +525,7 @@ Historian baseline deviation — pull tag-level statistics (mean, stddev) for cr
 
 OT Protocol Analysis — Claroty/Dragos/Nozomi baseline-deviation reports: any new CIP service code, Modbus function code, or OPC-UA method invocation originating from SD-330AC IP in the prior 30 days
 
-```powershell
+```text
 YARA memory scan — on engineering workstations and historian servers that received connections from the SD-330AC:
 Get-Process | Where-Object { $\_.ProcessName -match 'rslogix|studio5000|opc|historian|pi.\*' } | ForEach-Object { yara -p $\_.Id C:\hunt\rules\silex_bridgebreak.yar >> C:\hunt\yara-silex-h4-mem.txt }
 ```
@@ -552,7 +552,7 @@ Ransomware affiliates and initial-access brokers are the middle tier. They will 
 
 #### SIGMA Rule 1 — proxy category: Long redirect URL POST targeting SD-330AC or AMC Manager (CVE-2026-32956 heap overflow probe)
 
-```bash
+```text
 title: BRIDGE:BREAK Silex SD-330AC Redirect URL Overflow Probe
 id: 8b2f4c31-7e1d-49ab-bc60-3d9e4f8a1b72
 status: experimental
@@ -564,7 +564,7 @@ references:
 
 \- https://www.cisa.gov/news-events/ics-advisories/icsa-26-111-10
 
-```yaml
+```text
 author: 1898 & Co. Threat Hunt
 date: 2026-04-22
 tags:
@@ -587,10 +587,7 @@ condition: selection_dest and selection_uri and selection_body
 falsepositives:
 - Legitimate browser-driven redirect URLs from administrative portals in rare long-token SSO flows
 level: high
-```
 #### SIGMA Rule 2 — network_connection category: Unexpected egress from SD-330AC IP to non-admin destinations
-
-```yaml
 title: BRIDGE:BREAK Silex SD-330AC Unexpected Egress
 id: 1c3e5f29-6b74-4a88-9d0c-2b4f6a8e1d32
 status: experimental
@@ -618,10 +615,7 @@ condition: selection and not filter_admin
 falsepositives:
 - NTP, SNMP polling, and configured syslog forwarding from SD-330AC to approved collectors
 level: high
-```
 #### SIGMA Rule 3 — process_creation category: Admin-host curl/python invocation with Silex exploit fragments
-
-```yaml
 title: BRIDGE:BREAK Admin Host Silex Exploit Client Invocation
 id: 2d4f6a38-8c19-4b27-ae5d-3f6a9b2c1e48
 status: experimental
@@ -657,20 +651,14 @@ falsepositives:
 - Red-team or penetration-test engagements targeting SD-330AC with documented scope
 - Legitimate AMC Manager CLI automation during documented change windows
 level: high
-```
 #### Snort/Suricata Rule 1 — HTTP POST to SD-330AC login with oversized redirect parameter (CVE-2026-32956)
-
-```yaml
 alert http any any -> <silex_ip_list> any (msg:"BRIDGE:BREAK Silex SD-330AC Redirect URL Overflow Attempt"; flow:to_server,established; http.uri; content:"login"; nocase; http.request_body; pcre:"/redirect=[A-Za-z0-9%.\_-]{200,}/i"; threshold: type limit, track by_src, count 1, seconds 60; classtype:attempted-admin; reference:cve,2026-32956; reference:url,nvd.nist.gov/vuln/detail/CVE-2026-32956; sid:100026010; rev:1; metadata:campaign BridgeBreak, product Silex SD-330AC;)
-```
 #### Snort/Suricata Rule 2 — HTTP successful 200 response to Silex login from non-admin source (auth-bypass / null-password takeover)
-
-```yaml
 alert http any any -> <silex_ip_list> any (msg:"BRIDGE:BREAK Silex SD-330AC Successful Auth From Unexpected Source"; flow:to_server,established; http.uri; pcre:"/(login|admin|password|factory)/i"; threshold: type both, track by_src, count 1, seconds 300; classtype:attempted-admin; reference:cve,2026-32960; reference:cve,2026-32965; reference:url,nvd.nist.gov/vuln/detail/CVE-2026-32960; sid:100026011; rev:1; metadata:campaign BridgeBreak, product Silex SD-330AC, note "pair with ingress ACL to exclude admin_subnet";)
 ```
 #### YARA Rule 1 (disk artifacts) — Silex_BridgeBreak_Exploit_OnDisk: this rule targets staged exploit payloads, PCAP captures, and scripts on analyst or admin hosts that contain SD-330AC-specific exploit URL fragments and oversized redirect parameter patterns. The condition is structured as any-of so a single unambiguous indicator yields a hit, while the anchored regex for the long redirect parameter minimizes false positives against general-purpose HTTP fuzzing corpora. Run with yara -r across admin host user directories, forensic mount points, and PCAP staging directories.
 
-```yara
+```text
 rule Silex_BridgeBreak_Exploit_OnDisk
 ```
 
@@ -708,7 +696,7 @@ any of them
 
 #### YARA Rule 2 (process memory) — Silex_BridgeBreak_Inflight_Memory: this rule scans live process memory on admin hosts, AMC Manager servers, and Linux monitoring appliances for in-flight SD-330AC exploit strings that would only appear transiently during active exploitation. The condition requires either a Silex-specific long-redirect probe, or the product identifier combined with a factory-reset or set-password fragment, reducing false positives against documentation or training material resident in memory. Analysts should invoke via yara -p against curl, wget, python, PowerShell, and AMC Manager processes, or use CrowdStrike Real Time Response to execute across the admin host population.
 
-```yara
+```text
 rule Silex_BridgeBreak_Inflight_Memory
 ```
 
@@ -746,7 +734,7 @@ condition:
 
 #### YARA Rule 3 (firmware integrity) — Silex_Tampered_Firmware_Image: this rule inspects SD-330AC firmware images staged on AMC Manager hosts or captured in forensic images for markers associated with tampered firmware produced under CVE-2026-32958, specifically the presence of embedded shell-dropper strings adjacent to legitimate Silex header markers. The condition requires at least one Silex header string AND two or more payload markers, which reliably excludes legitimate vendor images since unmodified images never contain dropper or persistence fragments. Pair with vendor signing-key verification: a hit on this rule combined with a failed signature check is automatic escalation under Section 8 criterion 7.
 
-```yara
+```text
 rule Silex_Tampered_Firmware_Image
 ```
 

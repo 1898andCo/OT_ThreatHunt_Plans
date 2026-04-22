@@ -47,13 +47,13 @@ CrowdStrike Falcon FQL — detect web-client processes on admin hosts that submi
 
 BPF packet capture on the OT-edge SPAN feed — isolate converter management plane and TFTP traffic into a rolling 24-hour capture set:
 
-```bash
+```text
 tcpdump -i <span_iface> -G 3600 -W 24 -C 500 -w /var/pcap/bridgebreak-mgmt-%Y%m%d%H.pcap '(host <converter_ip_list>) and (tcp port 80 or tcp port 443 or tcp port 9999 or tcp port 30718 or udp port 69)'
 ```
 
 BPF packet capture — opportunistic IoT probes on ports 30718 (Lantronix Discovery Protocol) and 9999 (Lantronix Telnet/Setup port):
 
-```bash
+```text
 tcpdump -i <span_iface> -G 3600 -W 72 -w /var/pcap/bridgebreak-disc-%Y%m%d%H.pcap 'udp port 30718 or tcp port 9999'
 ```
 
@@ -73,7 +73,7 @@ source:paloalto @evt.name:THREAT (@url.path:\*FsBrowser\* OR @url.path:\*filesys
 
 Datadog Live Process Monitoring (Infrastructure \> Processes) — curl/wget/python invocations on admin hosts with exploit URL fragments:
 
-```bash
+```text
 command:curl user:\* OR command:wget user:\* OR command:python user:\*
 // Free-text filter: filesystem OR FsBrowser OR tftp-host
 ```
@@ -93,7 +93,7 @@ Windows Event IDs to collect on admin/jump hosts — forward via WEF or use Get-
 
 \- 4104 (PowerShell ScriptBlock) — PowerShell sessions touching converter IPs
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=(Get-Date).AddDays(-30)} | Where-Object { $\_.Message -match 'curl|wget|python|Invoke-WebRequest' -and $\_.Message -match '(filesystem|tftp|FsBrowser)' } | Export-Csv -Path C:\hunt\bb-admin-webclients.csv -NoTypeInformation
 ```
 
@@ -111,16 +111,12 @@ OT Data Collection: Forescout eyeInspect — Inventory \> Devices \> Export; Web
 
 SNMP polling — rolling device-side and switch-port counter collection during hunt window:
 
-```bash
+```text
 snmpwalk -v2c -c <community> <switch_ip> IF-MIB::ifTable
 snmpget -v2c -c <community> <switch_ip> IF-MIB::ifInOctets.<ifIndex> IF-MIB::ifOutOctets.<ifIndex> IF-MIB::ifInErrors.<ifIndex> IF-MIB::ifOutErrors.<ifIndex>
 snmpwalk -v2c -c <community> <converter_ip> system
 snmpwalk -v2c -c <community> <converter_ip> IF-MIB::ifTable
-```
-
-\# SNMPv3 variant where configured:
-
-```bash
+# SNMPv3 variant where configured:
 snmpwalk -v3 -l authPriv -u <user> -a SHA -A <authpass> -x AES -X <privpass> <converter_ip> system
 YARA file-system scan — stage on admin jump hosts and forensic shares for dropped exploit tooling or captured PCAPs containing exploit strings:
 yara -r /opt/yara/rules/bridgebreak.yar C:\users\\ C:\ProgramData\\ C:\hunt\\ >> C:\hunt\yara-bb-disk.txt
@@ -150,7 +146,7 @@ Wireshark display filter — review captured PCAP for exploit markers in HTTP tr
 
 http.request.uri contains "FsBrowser" or http.request.uri contains "filesystem" or http.request.uri matches "host=\[^&\]\*\[;|\`\]"
 
-```bash
+```text
 tshark -r bridgebreak-mgmt-\*.pcap -Y 'http.request.uri contains "FsBrowser" or http.request.uri matches "host=[^&]\*[;|\`]"' -T fields -e frame.time -e ip.src -e ip.dst -e http.request.uri >> tshark-bb-uri.txt
 ```
 
@@ -158,7 +154,7 @@ Wireshark display filter — outbound TFTP from converter IPs reaching non-appro
 
 udp.port == 69 and ip.src == \<converter_ip\>
 
-```bash
+```text
 tshark -r bridgebreak-mgmt-\*.pcap -Y 'udp.port == 69 and ip.src in {<converter_ip_list>}' -T fields -e frame.time -e ip.src -e ip.dst -e udp.dstport >> tshark-bb-tftp.txt
 ```
 
@@ -192,7 +188,7 @@ Create via: Monitors \> New Monitor \> Log Alert
 
 Windows Event Log PowerShell analysis — correlate 4688 process creations on admin hosts with converter-directed connections:
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=(Get-Date).AddDays(-30)} | Where-Object { $\_.Message -match '(curl|wget|python|Invoke-WebRequest|Invoke-RestMethod)' } | Select-Object TimeCreated,@{N='CmdLine';E={$\_.Properties[8].Value}},@{N='Account';E={$\_.Properties[1].Value}} | Export-Csv -Path C:\hunt\bb-h1-proc.csv -NoTypeInformation
 ```
 
@@ -236,20 +232,20 @@ source:paloalto @dest.ip:(<converter_subnet_1> OR <converter_subnet_2>) @url.pat
 
 Datadog Live Process Monitoring — admin-host processes generating crafted HTTP requests with Authorization: admin:
 
-```bash
+```text
 command:curl user:\* OR command:python user:\*
 // Free-text filter: Authorization OR admin\\\\ OR auth=admin
 ```
 
 BPF capture — capture HTTP Authorization headers on converter management plane:
 
-```bash
+```text
 tcpdump -i <span_iface> -G 3600 -W 48 -C 500 -w /var/pcap/bb-authhdr-%Y%m%d%H.pcap 'tcp and (tcp port 80 or tcp port 443 or tcp port 9999) and (host <converter_ip_list>)'
 ```
 
 Windows Event IDs to collect — 4104 (PowerShell ScriptBlock) for Authorization-header manipulation, 4688 for curl/Invoke-WebRequest:
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-PowerShell/Operational'; Id=4104; StartTime=(Get-Date).AddDays(-30)} | Where-Object { $\_.Message -match '(Authorization|Basic\s+YWRt|admin:)' } | Export-Csv -Path C:\hunt\bb-h2-ps.csv -NoTypeInformation
 ```
 
@@ -282,7 +278,7 @@ yara -r /opt/yara/rules/bridgebreak.yar /var/pcap/ C:\hunt\\ >> /var/log/yara-bb
 
 Datadog Log Analytics — rate anomalies and unauthorized-source analysis:
 
-```yaml
+```text
 source:paloalto @dest.ip:(<converter_subnet_1> OR <converter_subnet_2>) @status:200 @http.auth_user:admin
 // Use Timeseries view; group by @network.client.ip; time range last 30 days; investigate any source IP outside the admin allowlist
 ```
@@ -295,7 +291,7 @@ source:datadog @evt.category:user_management @evt.name:(role_change OR user_crea
 
 Datadog Monitor (required):
 
-```yaml
+```text
 Type: Log Alert
 Query: source:paloalto @dest.ip:(<converter_subnet_1> OR <converter_subnet_2>) @status:200 @http.auth_user:admin -@network.client.ip:<admin_subnet>
 Evaluation window: last 10 minutes
@@ -307,13 +303,13 @@ Wireshark display filter — inspect Authorization header patterns reaching conv
 
 http.authorization contains "admin:" or http.request.uri matches "(setup|admin|system)\[^/\]\*\$"
 
-```bash
+```text
 tshark -r bb-authhdr-\*.pcap -Y 'http.authorization' -T fields -e frame.time -e ip.src -e ip.dst -e http.authorization -e http.request.uri >> tshark-bb-auth.txt
 ```
 
 Windows Event Log PowerShell analysis — correlate admin-host logons within 5 minutes of suspected auth-bypass events:
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4624; StartTime=(Get-Date).AddDays(-30)} | Where-Object { $\_.Properties[8].Value -eq 3 } | Export-Csv -Path C:\hunt\bb-h2-logon.csv -NoTypeInformation
 YARA memory scan — detect in-memory exploit request strings in running curl/python/wget processes:
 Get-Process curl,wget,python,pwsh -ErrorAction SilentlyContinue | ForEach-Object { yara -p $\_.Id C:\hunt\rules\bridgebreak.yar >> C:\hunt\yara-bb-mem-h2.txt }
@@ -346,7 +342,7 @@ source:syslog (message:"firmware" OR message:"reboot" OR message:"coldStart" OR 
 
 BPF capture — firmware-image HTTP(S) transfers to Silex converters:
 
-```bash
+```text
 tcpdump -i <span_iface> -G 3600 -W 48 -C 500 -w /var/pcap/bb-fwload-%Y%m%d%H.pcap 'host <silex_ip_list> and (tcp port 80 or tcp port 443 or tcp port 9999)'
 ```
 
@@ -369,7 +365,7 @@ yara -r /opt/yara/rules/bridgebreak_fw.yar /mnt/forensic/ /var/firmware-staging/
 
 Windows Event IDs to collect — on admin host that might have initiated the firmware update:
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=(Get-Date).AddDays(-30)} | Where-Object { $\_.Message -match '(AMCManager|silex|firmware|\\bin|\\img)' } | Export-Csv -Path C:\hunt\bb-h3-fwadmin.csv -NoTypeInformation
 ```
 
@@ -406,13 +402,13 @@ Wireshark display filter — firmware POST to SD-330AC web interface:
 
 http.request.method == "POST" and (http.request.uri contains "firmware" or http.request.uri contains "upload") and ip.dst in {\<silex_ip_list\>}
 
-```bash
+```text
 tshark -r bb-fwload-\*.pcap -Y 'http.request.method == "POST" and http.request.uri contains "firmware"' -T fields -e frame.time -e ip.src -e ip.dst -e http.content_length >> tshark-bb-fwpost.txt
 ```
 
 OT Protocol Analysis — compare current device hashes to known-good vendor firmware hashes via OT platform APIs (Claroty, Nozomi, Forescout); any mismatch is automatic escalation
 
-```powershell
+```text
 YARA memory scan — on any Windows admin host suspected to have pushed firmware; scan active sessions and transfer processes:
 Get-Process | Where-Object { $\_.ProcessName -match 'AMCManager|curl|wget|python' } | ForEach-Object { yara -p $\_.Id C:\hunt\rules\bridgebreak_fw.yar >> C:\hunt\yara-bb-fw-mem.txt }
 ```
@@ -433,7 +429,7 @@ Impact | T0831 — Manipulation of Control (ICS) | Injection or alteration of se
 
 BPF capture — east-west from converter IP to OT/medical device VLANs:
 
-```bash
+```text
 tcpdump -i <ot_span_iface> -G 3600 -W 48 -C 500 -w /var/pcap/bb-eastwest-%Y%m%d%H.pcap 'src host <converter_ip> and not (dst host <management_jump_host_list>)'
 ```
 
@@ -475,13 +471,13 @@ Historian / SCADA alarm correlation — pull OSI PI, GE Proficy, or AVEVA System
 
 Windows Event IDs to collect — on engineering workstations and historian/SCADA servers:
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156; StartTime=(Get-Date).AddDays(-30)} | Where-Object { $\_.Message -match '<converter_ip_pattern>' } | Export-Csv -Path C:\hunt\bb-h4-wfp.csv -NoTypeInformation
 ```
 
 SNMP polling — hunt for interface error/utilization spikes on switch ports facing OT/medical endpoints that sit downstream of the converter:
 
-```bash
+```text
 snmpwalk -v2c -c <community> <ot_switch_ip> IF-MIB::ifTable
 snmpget -v2c -c <community> <ot_switch_ip> IF-MIB::ifInOctets.<plc_port> IF-MIB::ifInErrors.<plc_port>
 ```
@@ -492,7 +488,7 @@ Wireshark display filter — EtherNet/IP CIP service code analysis from converte
 
 cip and ip.src == \<converter_ip\>
 
-```bash
+```text
 tshark -r bb-eastwest-\*.pcap -Y 'cip and ip.src == <converter_ip>' -T fields -e frame.time -e ip.src -e ip.dst -e cip.service >> tshark-bb-cip.txt
 ```
 
@@ -500,7 +496,7 @@ Wireshark display filter — Modbus function-code review:
 
 modbus and ip.src == \<converter_ip\>
 
-```bash
+```text
 tshark -r bb-eastwest-\*.pcap -Y 'modbus and ip.src == <converter_ip>' -T fields -e frame.time -e mbtcp.trans_id -e modbus.func_code >> tshark-bb-modbus.txt
 ```
 
@@ -535,7 +531,7 @@ Historian baseline deviation — pull tag-level statistics (mean, stddev) for cr
 
 OT Protocol Analysis — Claroty/Dragos/Nozomi baseline-deviation reports: any new CIP service code, Modbus function code, or OPC-UA method invocation originating from converter IP in the prior 30 days
 
-```powershell
+```text
 YARA memory scan — on engineering workstations and historian servers that received connections from the converter:
 Get-Process | Where-Object { $\_.ProcessName -match 'rslogix|studio5000|opc|historian|pi.\*' } | ForEach-Object { yara -p $\_.Id C:\hunt\rules\bridgebreak.yar >> C:\hunt\yara-bb-h4-mem.txt }
 ```
@@ -562,7 +558,7 @@ Ransomware affiliates and initial-access brokers are the middle tier. They will 
 
 #### SIGMA Rule 1 — NGFW/proxy category: Authentication-bypass URL pattern for Lantronix EDS3000PS CVE-2025-67039
 
-```yaml
+```text
 title: BRIDGE:BREAK Lantronix EDS3000PS Authentication Bypass Pattern
 id: 7a1e3b21-6f2c-4f9a-9c7a-2b8d0c1e4f61
 status: experimental
@@ -591,10 +587,7 @@ condition: selection_dest and selection_hdr
 falsepositives:
 - Legitimate administrative browser sessions on admin jump hosts within the allowlisted admin subnet
 level: high
-```
 #### SIGMA Rule 2 — network_connection category: Outbound TFTP from converter IP ranges
-
-```yaml
 title: BRIDGE:BREAK Converter Outbound TFTP (CVE-2025-67041 Exploit Post-Condition)
 id: 1c2d3e4f-5a6b-47c8-9d0e-1f2a3b4c5d6e
 status: experimental
@@ -621,10 +614,7 @@ condition: selection
 falsepositives:
 - Legitimate TFTP file transfer during documented firmware distribution windows
 level: high
-```
 #### SIGMA Rule 3 — process_creation category on admin hosts: curl/python invocation with BRIDGE:BREAK exploit markers
-
-```yaml
 title: BRIDGE:BREAK Admin Host Exploit Client Invocation
 id: 2b3c4d5e-6f7a-48b9-ac1d-2e3f4a5b6c7d
 status: experimental
@@ -657,25 +647,16 @@ condition: selection_img and selection_cmd
 falsepositives:
 - Red-team or penetration-test engagements targeting converter devices with documented scope
 level: high
-```
 #### Snort/Suricata Rule 1 — HTTP URI pattern for Lantronix EDS3000PS TFTP host-parameter command injection (CVE-2025-67041)
-
-```yaml
 alert http any any -> <converter_ip_list> any (msg:"BRIDGE:BREAK Lantronix EDS3000PS TFTP Host Parameter Command Injection Attempt"; flow:to_server,established; http.uri; content:"FsBrowser"; nocase; http.uri; pcre:"/host=[^&]\*[;|\`\\\]/i"; threshold: type limit, track by_src, count 1, seconds 60; classtype:web-application-attack; reference:cve,2025-67041; reference:url,nvd.nist.gov/vuln/detail/CVE-2025-67041; sid:100026001; rev:1; metadata:campaign BridgeBreak, product Lantronix EDS3000PS;)
-```
 #### Snort/Suricata Rule 2 — HTTP Authorization header pattern for Lantronix EDS3000PS auth bypass (CVE-2025-67039)
-
-```yaml
 alert http any any -> <converter_ip_list> any (msg:"BRIDGE:BREAK Lantronix EDS3000PS Authentication Bypass Pattern"; flow:to_server,established; http.uri; pcre:"/(setup|admin|system)[^/]\*$/i"; http.header; content:"Authorization: Basic YWRt"; nocase; threshold: type limit, track by_src, count 1, seconds 60; classtype:attempted-admin; reference:cve,2025-67039; reference:url,nvd.nist.gov/vuln/detail/CVE-2025-67039; sid:100026002; rev:1; metadata:campaign BridgeBreak, product Lantronix EDS3000PS;)
-```
 #### Snort/Suricata Rule 3 — HTTP POST pattern for Silex SD-330AC heap overflow via redirect URL (CVE-2026-32956)
-
-```yaml
 alert http any any -> <silex_ip_list> any (msg:"BRIDGE:BREAK Silex SD-330AC Redirect URL Overflow Attempt"; flow:to_server,established; http.uri; content:"login"; nocase; http.request_body; pcre:"/redirect[=]?[^&]{200,}/i"; threshold: type limit, track by_src, count 1, seconds 60; classtype:attempted-admin; reference:cve,2026-32956; reference:url,nvd.nist.gov/vuln/detail/CVE-2026-32956; sid:100026003; rev:1; metadata:campaign BridgeBreak, product Silex SD-330AC;)
 ```
 #### YARA Rule 1 (disk artifacts) — BridgeBreak_Exploit_Artifacts_OnDisk: this rule targets staged exploit payloads, PCAP captures, and scripts on analyst or admin hosts that contain BRIDGE:BREAK-specific exploit URL fragments and Authorization header patterns. The condition is structured as any-of so a single unambiguous string from either the Lantronix chain (FsBrowser, ltrx_evo) or the Silex chain (redirect-URL-overflow probe) yields a hit while still allowing multi-indicator corroboration for high-confidence escalation. Fragment strings are narrow and codepoint-specific to minimize false positives against generic HTTP fuzzing corpora.
 
-```yara
+```text
 rule BridgeBreak_Exploit_Artifacts_OnDisk
 ```
 
@@ -713,7 +694,7 @@ any of them
 
 #### YARA Rule 2 (process memory) — BridgeBreak_Inflight_Exploit_Memory: this rule scans live process memory on admin hosts, analyst jump boxes, and Linux monitoring appliances for in-flight BRIDGE:BREAK exploit strings that would only appear transiently during active exploitation. The condition requires either a Lantronix-specific indicator AND the admin Authorization marker, or a Silex-specific long-redirect probe, reducing false-positive hits on documentation or training material resident in memory. Analysts should invoke with yara -p against curl, wget, python, and PowerShell processes, or use CrowdStrike Real Time Response to execute the rule across the admin host population.
 
-```yara
+```text
 rule BridgeBreak_Inflight_Exploit_Memory
 ```
 
@@ -755,7 +736,7 @@ condition:
 
 #### YARA Rule 3 (firmware integrity) — BridgeBreak_Tampered_Firmware_Image: this rule inspects Silex SD-330AC firmware images staged on administrative hosts or captured in forensic images for markers associated with tampered firmware produced under CVE-2026-32958, including embedded shell-dropper strings adjacent to legitimate Silex header markers. The condition requires at least one Silex header string AND at least one attacker payload marker, which reliably excludes legitimate vendor images since unmodified images never contain the payload markers. Pair with vendor signing-key verification: a hit on this rule combined with a failed signature check is automatic escalation under Section 8 criterion 7.
 
-```yara
+```text
 rule BridgeBreak_Tampered_Firmware_Image
 ```
 

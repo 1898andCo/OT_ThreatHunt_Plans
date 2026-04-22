@@ -28,7 +28,7 @@ OR ParentBaseFileName = "CODESYS.exe"
 
 CrowdStrike Falcon — Collect outbound network connections from CODESYS process:
 
-```bash
+```text
 #event_simpleName = "NetworkConnectIP4"
 | join(
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,ParentBaseFileName]), limit=100000)},
@@ -45,7 +45,7 @@ tcpdump -i eth0 -w /captures/codesys_web\_%Y%m%d\_%H%M%S.pcap -G 3600 -C 500 \\
 
 Datadog Log Search — Collect CODESYS process spawns (Windows endpoint):
 
-```yaml
+```text
 source:windows message:"CoDeSysControlWinSysService64.exe" status:error
 // time range: last 90 days; filter to engineering workstation hostnames
 source:windows message:"codesyscontrol.exe" message:"cmd.exe OR powershell.exe OR wscript.exe"
@@ -59,7 +59,7 @@ command:CoDeSysControl user:SYSTEM
 
 Windows Event Collection — Capture process creation from CODESYS parent (Event ID 4688):
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{
 LogName = 'Security'
 Id = 4688
@@ -80,7 +80,7 @@ OT/ICS — Export CODESYS gateway connection log from engineering workstation:
 
 \# Default path: C:\ProgramData\CODESYS\GatewayService\Logs\\
 
-```powershell
+```text
 Get-ChildItem "C:\ProgramData\CODESYS\GatewayService\Logs\\ -Filter "\*.log" |
 Copy-Item -Destination C:\hunt\gateway_logs\\
 YARA — Scan CODESYS installation directory for dropped tools or payloads:
@@ -119,7 +119,7 @@ tcp.port == 8080 and tcp.len \> 8000
 
 \# tshark equivalent:
 
-```bash
+```text
 tshark -r codesys_web.pcap -Y "tcp.port == 8080 && tcp.len > 8000" \\
 -T fields -e frame.time -e ip.src -e tcp.len >> codesys_large_requests.txt
 ```
@@ -153,7 +153,7 @@ Prerequisites: Windows Security Event Logs (Event ID 4688) must be forwarded to 
 
 Windows PowerShell Analysis — Hunt CODESYS-spawned shells and injections:
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{
 LogName = 'Security'
 Id = 4688
@@ -167,11 +167,7 @@ $_.Properties\[5\].Value -match 'cmd\\exe|powershell|wscript|mshta|rundll32|regs
 @{N='CmdLine';E={$_.Properties\[8\].Value}} |
 Export-Csv C:\hunt\codesys_shell_spawn.csv -NoTypeInformation
 YARA Memory Scan — Scan CODESYS runtime process memory for injected shellcode:
-```
-
-\# Enumerate CODESYS PIDs and scan memory
-
-```powershell
+# Enumerate CODESYS PIDs and scan memory
 Get-Process | Where-Object { $\_.Name -match 'codesys|CoDeSys' } | ForEach-Object {
 yara -p $\_.Id C:\hunt\rules\injected_shellcode.yar 2>>C:\hunt\yara_errors.txt
 } >> C:\hunt\codesys_memory_yara_hits.txt
@@ -203,7 +199,7 @@ CrowdStrike Falcon — Collect child processes of CodeMeter daemon:
 
 CrowdStrike Falcon — Collect outbound connections from CodeMeter:
 
-```bash
+```text
 #event_simpleName = "NetworkConnectIP4"
 | join(
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine]), limit=100000)},
@@ -220,7 +216,7 @@ tcpdump -i eth0 -w /captures/codemeter\_%Y%m%d\_%H%M%S.pcap -G 3600 -C 200 \\
 
 Datadog Log Search — Collect CodeMeter service errors:
 
-```yaml
+```text
 source:windows message:"CodeMeter" status:error
 // time range: last 90 days
 ```
@@ -232,7 +228,7 @@ command:CodeMeter user:SYSTEM
 
 Windows Event Collection — CodeMeter service crashes (Event ID 7034, 1000):
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='System'; Id=7034; StartTime=(Get-Date).AddDays(-90)} |
 Where-Object { $\_.Message -match 'CodeMeter' } |
 Select-Object TimeCreated, Message |
@@ -274,14 +270,14 @@ tcp.port == 22350 and tcp.len \> 4096
 
 \# tshark equivalent for oversized packets:
 
-```bash
+```text
 tshark -r codemeter.pcap -Y "(udp.port == 22350 && udp.length > 1400) || (tcp.port == 22350 && tcp.len > 4096)" \\
 -T fields -e frame.time -e ip.src -e ip.len >> codemeter_oversized.txt
 ```
 
 Datadog Log Analytics — CodeMeter crash and error rate by host:
 
-```yaml
+```text
 source:windows message:"CodeMeter" status:error
 // Analytics: Timeseries view; group by host; time range: last 90 days
 // Spike in errors correlates with exploit attempts causing service instability
@@ -295,7 +291,7 @@ source:datadog @evt.category:user_management @evt.name:user.login
 
 Datadog Monitor — Alert on CodeMeter service crash:
 
-```yaml
+```text
 Type: Log Alert
 Query: source:windows message:"CodeMeter" (status:error OR "application error" OR "faulting application")
 Evaluation window: last 10 minutes
@@ -303,7 +299,7 @@ Alert condition: count > 2
 Message: "ALERT: CodeMeter service crash detected — possible CVE-2020-14509/CVE-2023-3935 exploitation attempt — @security-oncall"
 Prerequisites: Windows System and Application Event Logs must be forwarded to Datadog; WinRM or Datadog Agent must be installed on engineering workstations
 ```
-```powershell
+```text
 YARA Memory Scan — Scan CodeMeter process memory for post-exploitation artifacts:
 Get-Process | Where-Object { $\_.Name -match 'CodeMeter' } | ForEach-Object {
 yara -p $\_.Id C:\hunt\rules\post_exploitation_memory.yar 2>>C:\hunt\yara_errors.txt
@@ -324,7 +320,7 @@ MITRE ATT&CK: Lateral Movement / ATT&CK for ICS T0817 — Drive-by Compromise; T
 
 CrowdStrike Falcon — Collect all outbound CODESYS runtime connections to OT network ranges:
 
-```bash
+```text
 #event_simpleName = "NetworkConnectIP4"
 | cidr(RemoteAddressIP4, subnet=["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"])
 | join(
@@ -349,7 +345,7 @@ source:windows message:"GatewayService" message:"connection"
 
 Windows Event Collection — CODESYS gateway service network connections (Sysmon Event ID 3):
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; Id=3; StartTime=(Get-Date).AddDays(-90)} |
 Where-Object { $\_.Message -match 'codesys|GatewayService' } |
 Select-Object TimeCreated,
@@ -397,7 +393,7 @@ tcp.port == 1217 or udp.port == 1217
 
 \# tshark — extract unique CODESYS destination IPs for comparison to authorized asset list:
 
-```bash
+```text
 tshark -r ot_uplink.pcap -Y "tcp.port == 1217 || udp.port == 1217" \\
 -T fields -e ip.src -e ip.dst -e frame.time | sort -u >> codesys_gw_ips.txt
 ```
@@ -431,7 +427,7 @@ Prerequisites: CODESYS GatewayService logs must be forwarded to Datadog via Data
 
 SNMP — Poll engineering workstation uplink switch for traffic volume on OT-facing port:
 
-```bash
+```text
 snmpwalk -v2c -c public <switch-ip> 1.3.6.1.2.1.2.2.1.10.<ifIndex> # ifInOctets
 snmpwalk -v2c -c public <switch-ip> 1.3.6.1.2.1.2.2.1.16.<ifIndex> # ifOutOctets
 ```
@@ -448,7 +444,7 @@ enip && cip.service == 0x4d \# CIP Write Tag — flag writes outside maintenance
 
 \# tshark — extract CIP service codes for offline analysis:
 
-```powershell
+```text
 tshark -r ot_uplink.pcap -Y "enip" \\
 -T fields -e ip.src -e ip.dst -e cip.service -e frame.time >> cip_services.txt
 YARA Memory Scan — Scan CODESYS gateway process for injected code:
@@ -479,7 +475,7 @@ include=[FileName,CommandLine,AuthenticationId]
 
 CrowdStrike Falcon — Collect CODESYS registry writes (privilege-level configuration changes):
 
-```bash
+```text
 #event_simpleName = "RegGenericValueUpdate"
 | RegObjectName = /CODESYS|CodeMeter|Wibu/i
 | join(
@@ -509,18 +505,14 @@ command:CODESYS user:SYSTEM
 
 Windows Event Collection — Privilege escalation indicators (Event IDs 4672, 4648, 4697):
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4672,4648; StartTime=(Get-Date).AddDays(-90)} |
 Where-Object { $\_.Properties[1].Value -match 'codesys|codemeter|festo' } |
 Select-Object TimeCreated, Id,
 @{N='Account'; E={$\_.Properties[1].Value}},
 @{N='Privileges';E={$\_.Properties[4].Value}} |
 Export-Csv C:\hunt\codesys_priv_esc.csv -NoTypeInformation
-```
-
-\# Service installation (potential persistence post-escalation):
-
-```powershell
+# Service installation (potential persistence post-escalation):
 Get-WinEvent -FilterHashtable @{LogName='System'; Id=7045; StartTime=(Get-Date).AddDays(-90)} |
 Select-Object TimeCreated, Message |
 Export-Csv C:\hunt\new_services.csv -NoTypeInformation
@@ -533,7 +525,7 @@ yara -r C:\hunt\rules\post_exploitation_tools.yar C:\ProgramData\\ >> C:\hunt\pr
 
 CrowdStrike Falcon — Detect CODESYS processes executing with SYSTEM context (CVE-2022-4046 escalation):
 
-```powershell
+```text
 #event_simpleName = "ProcessRollup2"
 | FileName = /codesys/i OR ParentBaseFileName = /codesys/i
 | AuthenticationId = "0x3e7"
@@ -556,7 +548,7 @@ tcp.flags.syn == 1 and not tcp.flags.ack == 1 and not (tcp.dstport == 80 or tcp.
 
 \# tshark — extract unexpected outbound SYNs from workstation:
 
-```bash
+```text
 tshark -r escalation_traffic.pcap \\
 ```
 
@@ -593,7 +585,7 @@ Prerequisites: Windows Security Event ID 4688 with command-line logging, forward
 
 Windows PowerShell Analysis — Hunt scheduled tasks created post-exploitation:
 
-```powershell
+```text
 Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-TaskScheduler/Operational'; Id=106; StartTime=(Get-Date).AddDays(-90)} |
 Select-Object TimeCreated, Message |
 Export-Csv C:\hunt\new_scheduled_tasks.csv -NoTypeInformation
@@ -633,7 +625,7 @@ CODESYS GatewayService application logs from C:\ProgramData\CODESYS\GatewayServi
 
 The following SIGMA rule detects unexpected process creation with CODESYS runtime components as the parent process, targeting engineering workstations where CODESYS Development System or Festo Automation Suite is installed. This rule targets OS command injection (CVE-2023-6357) and post-exploitation shell spawning following web server exploitation (CVE-2019-13548, CVE-2020-10245). The condition filters specifically for shell and scripting interpreter children of known CODESYS process names, minimizing false positives from legitimate CODESYS toolchain processes that spawn compilers or linkers.
 
-```yaml
+```text
 title: CODESYS Runtime Spawns Shell or Scripting Interpreter
 id: 3a7f1b2e-d5c4-4e8a-b91f-06a3d72c40e9
 status: experimental
@@ -645,7 +637,7 @@ runtime or service process, which may indicate exploitation of CVE-2019-13548,
 
 CVE-2020-10245, CVE-2021-33485, or CVE-2023-6357 in Festo Automation Suite.
 
-```yaml
+```text
 references:
 - https://www.cisa.gov/news-events/ics-advisories/icsa-26-076-01
 - https://nvd.nist.gov/vuln/detail/CVE-2023-6357
@@ -685,7 +677,7 @@ level: high
 ```
 The following SIGMA rule detects network connections to Wibu CodeMeter daemon port 22350 from external or unexpected source IP addresses, targeting opportunistic exploitation of CVE-2020-14509 and CVE-2023-3935. The rule uses a network connection logsource to catch Sysmon Event ID 3 or equivalent EDR telemetry. The condition is structured as a destination port match with a NOT filter for known internal subnets, reducing false positives from legitimate inter-workstation CodeMeter license checks while flagging connections from unexpected network ranges.
 
-```yaml
+```text
 title: Wibu CodeMeter Daemon Inbound Connection from Unexpected Source
 id: 9c4d2a7f-e1b3-4f5a-8d0e-12c3b74a91f5
 status: experimental
@@ -697,7 +689,7 @@ from source IPs outside the authorized engineering workstation subnet. May indic
 
 exploitation of CVE-2020-14509 or CVE-2023-3935 from a network-adjacent attacker.
 
-```yaml
+```text
 references:
 - https://nvd.nist.gov/vuln/detail/CVE-2020-14509
 - https://nvd.nist.gov/vuln/detail/CVE-2023-3935
@@ -724,7 +716,7 @@ level: high
 ```
 The following SIGMA rule targets DNS resolution of CODESYS or CodeMeter domains with non-vendor FQDN patterns, detecting post-exploitation C2 beaconing. The condition uses a substring match against CODESYS/Wibu brand strings combined with a NOT filter for the legitimate vendor FQDNs, so that only suspicious non-vendor domains containing the brand strings as substrings trigger the rule.
 
-```yaml
+```text
 title: CODESYS Engineering Workstation DNS Lookup for Non-Vendor Domain
 id: b2e8c3d1-7a4f-4b6e-9f1a-53d2e80c74b6
 status: experimental
@@ -736,7 +728,7 @@ but not resolving to the legitimate vendor domains, used to detect post-exploita
 
 C2 beaconing via typosquatted or attacker-controlled domains.
 
-```yaml
+```text
 references:
 - https://www.cisa.gov/news-events/ics-advisories/icsa-26-076-01
 author: 1898 & Co. Threat Intelligence
@@ -767,10 +759,8 @@ Snort/Suricata rule to detect oversized packets to the Wibu CodeMeter daemon, ta
 
 ```text
 alert udp any any -> $HOME_NET 22350 (
-```
-
 msg:"CODESYS Wibu CodeMeter Oversized UDP Packet - Possible CVE-2020-14509 Exploitation";
-
+```
 dsize:\>1400;
 
 threshold:type both, track by_src, count 3, seconds 60;
@@ -793,31 +783,20 @@ Snort/Suricata rule to detect TCP connections to the CODESYS V3 runtime port fro
 
 ```text
 alert tcp !$ENGINEERING_NET any -> $OT_NET 1217 (
-```
-
 msg:"CODESYS V3 Runtime Connection from Non-Engineering Host - Possible CVE-2019-9010 Gateway Abuse";
-
 flags:S;
-
 threshold:type both, track by_src, count 1, seconds 1;
-
 classtype:policy-violation;
-
 sid:9100002;
-
 rev:1;
-
 reference:cve,2019-9010;
-
 reference:url,nvd.nist.gov/vuln/detail/CVE-2019-9010;
-
 metadata:affected_product CODESYS_CmpGateway, deployment ICS, created_at 2026-03-23;
-
 )
-
+```
 The first YARA rule targets dropped exploit artifacts and post-exploitation tools in the CODESYS installation directory and Windows temporary paths. This rule targets file-system artifacts because successful exploitation of the web server or CodeMeter buffer overflow vulnerabilities commonly results in a dropped second-stage payload or persistence mechanism written to a writable directory on the compromised workstation. The condition requires both a file-system path indicator and at least one known attacker tool string, reducing false positives from legitimate administrative tools.
 
-```yara
+```text
 rule CODESYS_Exploit_Artifacts_on_Disk
 ```
 
@@ -861,7 +840,7 @@ condition:
 
 The second YARA rule targets in-memory post-exploitation and credential dumping artifacts. This rule covers the standing Credential_Dump_Tool_Memory_Artifacts requirement for any hunt involving privilege escalation. The condition uses OR branches across four distinct tool families so that any single branch constitutes a hit, plus a fifth catch-all branch. Note: this rule targets Windows LSASS tooling; scope to engineering workstations and Windows hosts only.
 
-```yara
+```text
 rule Credential_Dump_Tool_Memory_Artifacts
 ```
 
