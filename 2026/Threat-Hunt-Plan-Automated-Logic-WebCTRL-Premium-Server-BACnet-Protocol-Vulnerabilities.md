@@ -24,31 +24,22 @@ Collection \| T1040 — Network Sniffing \| An adversary on the same network seg
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | in(FileName, values=["Wireshark.exe","tshark.exe","dumpcap.exe","NetworkMiner.exe","rawcap.exe","windump.exe","pktmon.exe"])
-
 | table([ComputerName, timestamp, FileName, CommandLine, ParentBaseFileName, ImageFileName])
-
 // time range: 90 days retroactive
-
 ```
 #### CrowdStrike Falcon FQL — New pcap/capture file written to disk
 
 ```text
 #event_simpleName = "NewExecutableWritten"
-
 | TargetFileName = /\\(pcap|pcapng|cap|etl)\$/i
-
 | table([ComputerName, timestamp, TargetFileName, FilePath])
-
 // time range: 90 days retroactive
-
 ```
 #### tcpdump BPF — Capture all BACnet/IP traffic on the building automation segment
 
 ```bash
 tcpdump -i eth0 -w /tmp/bacnet_capture_%Y%m%d_%H%M%S.pcap -G 3600 -C 100 "udp port 47808 or tcp port 47808 or tcp port 9001"
-
 ```
 Replace eth0 with the interface facing the BACnet network. Port 47808 = BACnet/IP; port 9001 = BACnet/SC.
 
@@ -56,9 +47,7 @@ Replace eth0 with the interface facing the BACnet network. Port 47808 = BACnet/I
 
 ```text
 source:windows message:("Wireshark" OR "tshark" OR "dumpcap" OR "pktmon" OR "NetworkMiner")
-
 // time range: 90 days retroactive to current
-
 ```
 Analytics: Table view; group by host; sort by count descending.
 
@@ -68,15 +57,10 @@ Analytics: Table view; group by host; sort by count descending.
 
 ```text
 Type: Log Alert
-
 Query: source:windows message:("Wireshark" OR "tshark" OR "dumpcap" OR "pktmon" OR "NetworkMiner" OR "rawcap")
-
 Evaluation window: last 5 minutes
-
 Alert condition: count > 0
-
 Message: "ALERT: Packet capture tool launched on Windows host — possible BACnet traffic interception — immediate investigation required @soc-channel"
-
 ```
 Prerequisites: Windows Event Forwarding with process creation (Event ID 4688) or Sysmon Event ID 1 forwarded to Datadog
 
@@ -94,27 +78,20 @@ Sysmon Event ID 11 (FileCreate) — pcap, pcapng, etl file creation
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=(Get-Date).AddDays(-90)} |
-
 Where-Object { \$_.Message -match 'Wireshark|tshark|dumpcap|NetworkMiner|pktmon|windump' } |
-
 Select-Object TimeCreated, Message |
-
 Export-Csv -Path "C:\hunt\capture_tools_4688.csv" -NoTypeInformation
-
 ```
 ***OT Data Collection:*** Export switch port traffic counters via SNMP for the interface connecting to the BACnet segment. Elevated unicast input counters on the BACnet switch port from a non-controller source address indicate passive capture activity.
 
 ```powershell
 snmpget -v2c -c <community> <switch_ip> IF-MIB::ifInOctets.<interface_index>
-
 snmpget -v2c -c <community> <switch_ip> IF-MIB::ifInUcastPkts.<interface_index>
-
 ```
 #### YARA file-system scan
 
 ```text
 yara -r C:\hunt\rules\bacnet_capture_tools.yar C:\\ >> C:\hunt\yara_capture_hits.txt 2>&1
-
 ```
 ### Analysis Queries
 
@@ -122,29 +99,19 @@ yara -r C:\hunt\rules\bacnet_capture_tools.yar C:\\ >> C:\hunt\yara_capture_hits
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | ComputerName = /webctr/i
-
 | groupBy([ComputerName, FileName, ParentBaseFileName, CommandLine], function=count(), limit=100000)
-
 | sort(_count, order=asc, limit=50)
-
 // time range: 90 days retroactive — asc = rarest first, most suspicious
-
 ```
 #### CrowdStrike Falcon FQL — pcap files written on any endpoint
 
 ```text
 #event_simpleName = "NewExecutableWritten"
-
 | TargetFileName = /\\(pcap|pcapng|cap)\$/i
-
 | groupBy([ComputerName, TargetFileName, FilePath], function=count(), limit=100000)
-
 | sort(_count, order=asc, limit=50)
-
 // time range: 90 days retroactive
-
 ```
 #### Wireshark display filter — DNS queries for capture tool update domains
 
@@ -152,45 +119,33 @@ dns.qry.name contains "wireshark" or dns.qry.name contains "live.sysinternals" o
 
 ```bash
 tshark equivalent:
-
 tshark -r bacnet_capture.pcap -Y 'dns.qry.name contains "wireshark" or dns.qry.name contains "cloudshark"' -T fields -e frame.time -e ip.src -e dns.qry.name
-
 ```
 #### Datadog Log Analytics — Timeline of capture tool events
 
 ```text
 source:windows message:("Wireshark" OR "tshark" OR "dumpcap" OR "pktmon")
-
 // Analytics: Timeseries view; group by host; time range: 90 days to current
-
 ```
 #### Datadog Audit Trail
 
 ```text
 source:datadog @evt.category:user_access @evt.name:login
-
 // Correlate login events with timestamps of capture tool executions identified above
-
 ```
 #### Datadog CloudTrail query (if WebCTRL runs in hybrid/cloud environment)
 
 ```text
 source:cloudtrail @evt.name:(DescribeInstances OR GetObject) -@network.client.ip:10.\* -@network.client.ip:172.16.\*
-
 // Analytics: Table view; group by @network.client.ip, @userIdentity.arn; time range: 90 days
-
 ```
 #### Windows Event Log — Sysmon file creation (pcap files)
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; Id=11; StartTime=(Get-Date).AddDays(-90)} |
-
 Where-Object { \$_.Message -match '\\pcap|\\pcapng|\\cap' } |
-
 Select-Object TimeCreated, Message |
-
 Export-Csv -Path "C:\hunt\pcap_files_sysmon.csv" -NoTypeInformation
-
 ```
 ***OT Analysis:*** Correlate SNMP switch port byte counters on the BACnet segment interface with scheduled operational hours. A baseline deviation exceeding 20% in received bytes on a non-PLC source port during off-hours warrants investigation as passive capture activity. Export Claroty, Dragos, or Nozomi asset timeline for the BACnet segment and identify any new device registrations (new BACnet device instance numbers) that do not correspond to authorized controllers.
 
@@ -198,7 +153,6 @@ Export-Csv -Path "C:\hunt\pcap_files_sysmon.csv" -NoTypeInformation
 
 ```powershell
 Get-Process | ForEach-Object { yara C:\hunt\rules\bacnet_capture_tools.yar \$_.Id 2>\$null } >> C:\hunt\yara_capture_memory_hits.txt
-
 ```
 CrowdStrike RTR: Run above command via Falcon Real Time Response on the WebCTRL host.
 
@@ -216,7 +170,6 @@ Defense Evasion / ICS Impact \| T1036 — Masquerading \| T0831 — Manipulation
 
 ```bash
 tcpdump -i eth0 -w /tmp/bacnet_writes_%Y%m%d_%H%M%S.pcap -G 1800 -C 50 "udp port 47808 and (udp[10:1] = 0x0f or udp[10:1] = 0x1c)"
-
 ```
 BACnet APDU: 0x0f = WriteProperty; 0x1c = DeviceCommunicationControl. Replace eth0 with the BACnet-facing interface.
 
@@ -224,7 +177,6 @@ BACnet APDU: 0x0f = WriteProperty; 0x1c = DeviceCommunicationControl. Replace et
 
 ```bash
 tcpdump -i eth0 -w /tmp/bacnet_discovery_%Y%m%d_%H%M%S.pcap "udp port 47808 and udp[10:1] = 0x10"
-
 ```
 BACnet APDU 0x10 = Who-Is unconfirmed service.
 
@@ -232,31 +184,20 @@ BACnet APDU 0x10 = Who-Is unconfirmed service.
 
 ```text
 #event_simpleName = "DnsRequest"
-
 | DomainName = /bacnet|automatedlogic|webctr/i
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,TargetProcessId], function=selectLast([ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]), limit=100000)},
-
 field=[aid,ContextProcessId], key=[aid,TargetProcessId],
-
 include=[ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]
-
 )
-
 | table([ComputerName, DomainName, IpAddress, RequestType, FileName, CommandLine, ParentBaseFileName])
-
 // time range: 90 days retroactive
-
 ```
 #### Datadog Log Search — BACnet write anomalies in application logs
 
 ```text
 source:windows message:("BACnet" OR "WriteProperty" OR "DeviceCommunicationControl") status:error
-
 // time range: 90 days retroactive to current
-
 ```
 #### Windows Event IDs
 
@@ -270,13 +211,9 @@ Event ID 4624/4625 (Logon success/failure) — lateral movement onto BACnet segm
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156; StartTime=(Get-Date).AddDays(-90)} |
-
 Where-Object { \$_.Message -match ':47808' } |
-
 Select-Object TimeCreated, Message |
-
 Export-Csv -Path "C:\hunt\bacnet_wfp_5156.csv" -NoTypeInformation
-
 ```
 ***OT Data Collection:*** Export BACnet change-of-value log from the historian (Wonderware, OSIsoft PI, ICONICS, or similar). Filter for WriteProperty operations on commandable objects (analogOutput, binaryOutput) outside normal scheduled hours. Export Claroty, Dragos, or Nozomi BACnet device session logs for the hunt window.
 
@@ -284,7 +221,6 @@ Export-Csv -Path "C:\hunt\bacnet_wfp_5156.csv" -NoTypeInformation
 
 ```text
 yara -r C:\hunt\rules\bacnet_capture_tools.yar C:\\ >> C:\hunt\yara_spoofing_file_hits.txt 2>&1
-
 ```
 ### Analysis Queries
 
@@ -292,35 +228,22 @@ yara -r C:\hunt\rules\bacnet_capture_tools.yar C:\\ >> C:\hunt\yara_spoofing_fil
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | RemotePort = 47808
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]), limit=100000)},
-
 field=[aid,RawProcessId],
-
 include=[ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]
-
 )
-
 | table([ComputerName, FileName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName])
-
 // time range: 90 days retroactive
-
 ```
 #### CrowdStrike Falcon FQL — Top BACnet-port source IPs for baseline deviation detection
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | RemotePort = 47808
-
 | top([ComputerName, RemoteAddressIP4, FileName], limit=50)
-
 // time range: 90 days retroactive
-
 ```
 #### Wireshark display filter — BACnet WriteProperty from non-baseline sources
 
@@ -328,9 +251,7 @@ include=[ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]
 
 ```bash
 tshark equivalent:
-
 tshark -r bacnet_writes.pcap -Y "(bacnet.confirmed_service == 15) and !(ip.src == <webctr_host_ip>)" -T fields -e frame.time -e ip.src -e ip.dst -e bacnet.confirmed_service
-
 ```
 #### Wireshark display filter — BACnet Who-Is flood (high-rate scanning)
 
@@ -338,9 +259,7 @@ bacnet.unconfirmed_service == 8
 
 ```bash
 tshark rate check:
-
 tshark -r bacnet_discovery.pcap -Y "bacnet.unconfirmed_service == 8" -T fields -e frame.time -e ip.src | awk -F'\t' '{print \$2}' | sort | uniq -c | sort -rn | head -20
-
 ```
 Flag any source IP emitting more than 50 Who-Is packets in a 10-second window as scanning activity.
 
@@ -348,31 +267,22 @@ Flag any source IP emitting more than 50 Who-Is packets in a 10-second window as
 
 ```text
 source:windows @network.client.port:47808
-
 // Analytics: Table view; group by @network.client.ip; time range: 90 days to current
-
 ```
 #### Datadog Audit Trail
 
 ```text
 source:datadog @evt.category:user_access @evt.name:login
-
 // Correlate admin login events with timestamps of BACnet anomaly windows identified above
-
 ```
 #### Datadog Monitor
 
 ```text
 Type: Log Alert
-
 Query: source:windows @network.client.port:47808 !(host:<webctr_hostname>)
-
 Evaluation window: last 15 minutes
-
 Alert condition: count > 10
-
 Message: "ALERT: Unexpected host communicating on BACnet port 47808 — possible packet spoofing (CVE-2026-32666) — immediate investigation required @soc-channel"
-
 ```
 Prerequisites: Windows Firewall (WFP) audit logs forwarded to Datadog; Event ID 5156 enabled via Advanced Audit Policy
 
@@ -380,11 +290,8 @@ Prerequisites: Windows Firewall (WFP) audit logs forwarded to Datadog; Event ID 
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156; StartTime=(Get-Date).AddDays(-90)} |
-
 Where-Object { \$_.Message -match ':47808' } |
-
 Export-Csv -Path "C:\hunt\bacnet_wfp_analysis.csv" -NoTypeInformation
-
 ```
 ***OT Network Analysis:*** Pull 90-day trend from the historian for any controller object that received a WriteProperty operation outside the normal maintenance schedule. Flag any write that placed an analogOutput or binaryOutput beyond its documented operational range (maxPresValue / minPresValue). Correlate SNMP switch port counters showing unicast traffic from unexpected source MACs on the BACnet VLAN.
 
@@ -392,7 +299,6 @@ Export-Csv -Path "C:\hunt\bacnet_wfp_analysis.csv" -NoTypeInformation
 
 ```powershell
 Get-Process | ForEach-Object { yara C:\hunt\rules\bacnet_impersonation.yar \$_.Id 2>\$null } >> C:\hunt\yara_spoofing_memory_hits.txt
-
 ```
 ## Threat Actor Profile
 
@@ -422,15 +328,10 @@ This rule targets the process creation phase of CVE-2026-24060 exploitation, whe
 
 ```yaml
 title: Network Packet Capture Tool Launched — BACnet Sniffing Risk (CVE-2026-24060)
-
 id: 3a1f4b2c-9e0d-4a7f-b1c2-8d3e5f601234
-
 status: experimental
-
 description: Detects execution of known network packet capture tools on hosts that may carry BACnet network access, indicating potential passive interception of cleartext BACnet traffic per CVE-2026-24060.
-
 references:
-
 ```
 \- https://www.cisa.gov/news-events/ics-advisories/icsa-26-078-08
 
@@ -438,11 +339,8 @@ references:
 
 ```yaml
 author: 1898 & Co.
-
 date: 2026-03-24
-
 tags:
-
 ```
 \- attack.collection
 
@@ -450,7 +348,6 @@ tags:
 
 ```yaml
 logsource:
-
 ```
 category: process_creation
 
@@ -458,9 +355,7 @@ product: windows
 
 ```yaml
 detection:
-
 selection:
-
 ```
 Image\|endswith:
 
@@ -480,9 +375,7 @@ Image\|endswith:
 
 ```yaml
 condition: selection
-
 falsepositives:
-
 ```
 \- Authorized network engineers performing scheduled maintenance captures
 
@@ -490,7 +383,6 @@ falsepositives:
 
 ```yaml
 level: high
-
 ```
 #### SIGMA Rule 2 — Non-WebCTRL Process Binding to WebCTRL Service Port (CVE-2026-25086)
 
@@ -498,15 +390,10 @@ This rule targets the port-binding phase of CVE-2026-25086 exploitation, where a
 
 ```yaml
 title: Non-WebCTRL Process Connecting on WebCTRL Service Port — Possible Impersonation (CVE-2026-25086)
-
 id: 7c2d0e1a-4b5f-4c8d-a2e3-1f9c6b720abc
-
 status: experimental
-
 description: Detects any Windows process establishing a network connection on port 47808 or 9001 on a WebCTRL host where the process image does not match the expected WebCTRL service. Indicates potential port-binding impersonation per CVE-2026-25086.
-
 references:
-
 ```
 \- https://www.cisa.gov/news-events/ics-advisories/icsa-26-078-08
 
@@ -514,11 +401,8 @@ references:
 
 ```yaml
 author: 1898 & Co.
-
 date: 2026-03-24
-
 tags:
-
 ```
 \- attack.defense_evasion
 
@@ -526,7 +410,6 @@ tags:
 
 ```yaml
 logsource:
-
 ```
 category: network_connection
 
@@ -534,9 +417,7 @@ product: windows
 
 ```yaml
 detection:
-
 selection:
-
 ```
 DestinationPort\|contains:
 
@@ -556,9 +437,7 @@ Image\|contains:
 
 ```yaml
 condition: selection and not filter_legitimate
-
 falsepositives:
-
 ```
 \- Authorized third-party BACnet integration software (Niagara, Tridium, Metasys) installed on the same host
 
@@ -566,7 +445,6 @@ falsepositives:
 
 ```yaml
 level: critical
-
 ```
 #### SIGMA Rule 3 — New Windows Service Installed on WebCTRL Host (Persistence)
 
@@ -574,15 +452,10 @@ This rule targets persistence activity following initial exploitation, where an 
 
 ```yaml
 title: New Windows Service Installed on WebCTRL Server
-
 id: 5f1a3c9b-2e4d-4f1a-b8c3-0d7e9a241bc5
-
 status: experimental
-
 description: Detects installation of a new Windows service on a host running WebCTRL, which may indicate attacker persistence or a persistent port-binding process following exploitation of CVE-2026-25086.
-
 references:
-
 ```
 \- https://www.cisa.gov/news-events/ics-advisories/icsa-26-078-08
 
@@ -590,11 +463,8 @@ references:
 
 ```yaml
 author: 1898 & Co.
-
 date: 2026-03-24
-
 tags:
-
 ```
 \- attack.persistence
 
@@ -602,7 +472,6 @@ tags:
 
 ```yaml
 logsource:
-
 ```
 product: windows
 
@@ -610,17 +479,13 @@ service: system
 
 ```yaml
 detection:
-
 selection:
-
 ```
 EventID: 7045
 
 ```yaml
 condition: selection
-
 falsepositives:
-
 ```
 \- Authorized WebCTRL upgrades or component installations performed by facilities IT
 
@@ -628,13 +493,11 @@ falsepositives:
 
 ```yaml
 level: high
-
 ```
 #### Snort/Suricata Rule 1 — BACnet Who-Is Broadcast Flood (Device Discovery Scan)
 
 ```text
 alert udp any any -> any 47808 (
-
 ```
 msg:"BACNET-ICS BACnet Who-Is Broadcast Flood — Possible Device Discovery Scan (CVE-2026-32666)";
 
@@ -652,13 +515,11 @@ metadata:affected_product WebCTRL, cve CVE-2026-32666, created_at 2026-03-24;
 
 ```text
 )
-
 ```
 #### Snort/Suricata Rule 2 — BACnet WriteProperty from Untrusted Source
 
 ```text
 alert udp !\$BACNET_TRUSTED_HOSTS any -> \$BACNET_SERVERS 47808 (
-
 ```
 msg:"BACNET-ICS BACnet WriteProperty from Untrusted Source — Possible Spoofed Command Injection (CVE-2026-32666)";
 
@@ -676,7 +537,6 @@ metadata:affected_product WebCTRL, cve CVE-2026-32666, created_at 2026-03-24;
 
 ```text
 )
-
 ```
 Set \$BACNET_TRUSTED_HOSTS to authorized WebCTRL and controller management station IP ranges. Set \$BACNET_SERVERS to the WebCTRL host and BACnet router IPs.
 
@@ -686,7 +546,6 @@ This rule targets file-system artifacts left by network packet capture tools tha
 
 ```yara
 rule BACnet_Capture_Tool_Artifacts {
-
 ```
 meta:
 
@@ -736,15 +595,12 @@ filesize \< 100MB and (
 
 ```text
 )
-
 }
-
 ```
 #### File scan command
 
 ```text
 yara -r C:\hunt\rules\bacnet_capture_tools.yar C:\\ >> C:\hunt\yara_capture_hits.txt 2>&1
-
 ```
 #### YARA Rule 2 — BACnet Spoofing and Impersonation Memory Artifacts
 
@@ -752,7 +608,6 @@ This rule targets in-memory indicators of tools used to craft and inject spoofed
 
 ```yara
 rule BACnet_Spoofing_Impersonation_Memory {
-
 ```
 meta:
 
@@ -802,15 +657,12 @@ any of (\$l1,\$l2,\$l3)
 
 ```text
 )
-
 }
-
 ```
 #### Memory scan command
 
 ```powershell
 Get-Process | ForEach-Object { yara C:\hunt\rules\bacnet_impersonation.yar \$_.Id 2>\$null } >> C:\hunt\yara_impersonation_memory_hits.txt
-
 ```
 CrowdStrike RTR: Deploy above command via Falcon Real Time Response for remote scanning without requiring console access to the WebCTRL host.
 
