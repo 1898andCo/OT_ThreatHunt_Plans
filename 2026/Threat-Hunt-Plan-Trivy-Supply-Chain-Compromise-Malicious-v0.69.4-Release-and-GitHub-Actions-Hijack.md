@@ -22,9 +22,7 @@ CrowdStrike Falcon — Trivy child process collection (any process spawned by tr
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | ParentBaseFileName = "trivy"
-
 | table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, SHA256HashData, timestamp])
 ```
 
@@ -34,11 +32,8 @@ CrowdStrike Falcon — All trivy process executions with hash for comparison aga
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | FileName = "trivy"
-
 | groupBy([ComputerName, FileName, SHA256HashData, ImageFileName], function=count(), limit=100000)
-
 | sort(\_count, order=asc, limit=50)
 ```
 
@@ -48,11 +43,8 @@ CrowdStrike Falcon — Runner.Worker process spawning unexpected children (GitHu
 
 ```bash
 #event_simpleName = "ProcessRollup2"
-
 | ParentBaseFileName = "Runner.Worker"
-
 | table([ComputerName, FileName, CommandLine, ParentBaseFileName, SHA256HashData, ImageFileName, timestamp])
-
 tcpdump — Capture all traffic to/from CI/CD runner host during a timed scan window:
 ```
 
@@ -62,7 +54,6 @@ sudo tcpdump -i eth0 -w /tmp/trivy_hunt\_%Y%m%d\_%H%M%S.pcap -G 300 -C 100 \\
 
 ```text
 YARA file-system scan for TeamPCP Cloud Stealer Python script on disk:
-
 yara -r -p 4 /tmp/TeamPCP_Cloud_Stealer_Script.yar /home /tmp /var /opt >> /tmp/yara_hits_h1.txt 2>&1
 ```
 
@@ -70,11 +61,8 @@ Windows Event ID collection (Windows-hosted runners only) — Process creation f
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=(Get-Date).AddDays(-3)} |
-
 Where-Object { $\_.Properties[5].Value -match 'trivy' -or $\_.Properties[9].Value -match 'trivy' } |
-
 Select-Object TimeCreated,@{N='NewProcess';E={$\_.Properties[5].Value}},@{N='CmdLine';E={$\_.Properties[8].Value}},@{N='ParentProcess';E={$\_.Properties[13].Value}} |
-
 Export-Csv /tmp/trivy_proc_events.csv -NoTypeInformation
 ```
 
@@ -84,11 +72,8 @@ Datadog Log Search — Container/Kubernetes logs for trivy execution and unexpec
 
 ```bash
 source:kubernetes message:"trivy" @kubernetes.namespace_name:\* status:error
-
 // Follow-up: look for python3 or curl launched in the same container/pod immediately after trivy
-
 source:kubernetes (message:"python3" OR message:"curl") @kubernetes.pod_name:\*
-
 // Analytics: Table view, group by @kubernetes.pod_name, @kubernetes.container_name; time range above
 ```
 
@@ -96,11 +81,8 @@ Datadog Live Process Monitoring (Infrastructure \> Processes — NOT a log sourc
 
 ```bash
 command:trivy
-
 // Review spawned children in the process tree; look for python3, curl, or wget as immediate children
-
 command:python3 user:root
-
 // Prerequisite: Datadog Agent with process_config.process_collection.enabled: true on runner hosts
 ```
 
@@ -110,9 +92,7 @@ CrowdStrike Falcon — Frequency analysis: most common trivy parent processes (u
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | FileName = "trivy"
-
 | top([ComputerName, ParentBaseFileName, ImageFileName], limit=50)
 ```
 
@@ -120,11 +100,8 @@ CrowdStrike Falcon — Rarity analysis: least common trivy SHA256 hashes (rare h
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | FileName = "trivy"
-
 | groupBy([SHA256HashData, ImageFileName], function=count(), limit=100000)
-
 | sort(\_count, order=asc, limit=20)
 ```
 
@@ -134,25 +111,15 @@ CrowdStrike Falcon — Timeline: all process events on hosts that ran trivy duri
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | join(
-
 query={
-
 #event_simpleName=ProcessRollup2
-
 | FileName = "trivy"
-
 | groupBy([aid, ComputerName], function=count(), limit=100000)
-
 },
-
 field=aid,
-
 include=\[ComputerName\]
-
 )
-
 | table(\[ComputerName, FileName, CommandLine, ParentBaseFileName, SHA256HashData, timestamp\])
 ```
 
@@ -164,7 +131,6 @@ ip.addr == 45.148.10.212 && tcp.port == 443
 
 ```bash
 tshark -r /tmp/trivy_hunt\_\*.pcap -Y "ip.addr == 45.148.10.212 && tcp.port == 443" \\
-
 -T fields -e frame.time -e ip.src -e ip.dst -e tcp.port -e http2.headers.method 2>/dev/null
 ```
 
@@ -180,13 +146,9 @@ Datadog Monitor — Alert on trivy spawning unexpected child process (H1):
 
 ```text
 Type: Log Alert
-
 Query: source:kubernetes (message:"python3" OR message:"curl" OR message:"wget") @kubernetes.pod_name:\*trivy\*
-
 Evaluation window: last 5 minutes
-
 Alert condition: count > 0
-
 Message: "ALERT: Possible malicious Trivy child process detected in pod @kubernetes.pod_name — immediate pipeline suspension required @security-oncall"
 ```
 
@@ -206,13 +168,9 @@ Where-Object { $\_.Properties[5].Value -match 'trivy' }
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688; StartTime=$\_.TimeCreated; EndTime=$\_.TimeCreated.AddSeconds(10)} |
-
 Where-Object { $\_.Properties[13].Value -match [regex]::Escape($pid) } |
-
 Select-Object TimeCreated,@{N='ChildProcess';E={$\_.Properties[5].Value}},@{N='CmdLine';E={$\_.Properties[8].Value}}
-
 } | Export-Csv /tmp/trivy_children.csv -NoTypeInformation
-
 YARA memory scan — Scan all running Python processes for TeamPCP Cloud Stealer indicators:
 ```
 
@@ -234,11 +192,8 @@ CrowdStrike Falcon — Python processes with /proc references in command line (L
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | FileName = "python3"
-
 | CommandLine = /\\proc\\/i
-
 | table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, SHA256HashData, timestamp])
 ```
 
@@ -250,11 +205,8 @@ CrowdStrike Falcon — Any process on runner hosts spawned by trivy or Runner.Wo
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | in(FileName, values=["python3","python","sh","bash","curl","wget"])
-
 | ParentBaseFileName = "trivy"
-
 | table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, SHA256HashData, timestamp])
 ```
 
@@ -262,21 +214,13 @@ CrowdStrike Falcon — CriticalFile events on /proc paths (if Linux file telemet
 
 ```bash
 #event_simpleName = "CriticalFile"
-
 | TargetFileName = /\\proc\[0-9]+\\mem/i
-
 | table([ComputerName, TargetFileName, ContextProcessId, timestamp])
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,TargetProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId]), limit=100000)},
-
 field=[aid,ContextProcessId], key=[aid,TargetProcessId],
-
 include=[ImageFileName,FileName,CommandLine,AuthenticationId]
-
 )
-
 tcpdump — Monitor runner host for /proc access patterns correlated with Python process:
 ```
 
@@ -286,7 +230,6 @@ sudo tcpdump -i lo -w /tmp/runner_local\_%Y%m%d.pcap -G 300 -C 50 \\
 
 ```text
 YARA file-system scan for TeamPCP Python stealer script artifacts:
-
 yara -r -p 4 /tmp/TeamPCP_Cloud_Stealer_Script.yar / --exclude-dirs /proc --exclude-dirs /sys >> /tmp/yara_hits_h2.txt 2>&1
 ```
 
@@ -294,13 +237,9 @@ Windows Event ID collection (Windows runners with Sysmon) — File access on sen
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational'; Id=10; StartTime=(Get-Date).AddDays(-3)} |
-
 Where-Object { $\_.Properties[5].Value -match 'Runner.Worker' -or $\_.Properties[9].Value -match 'Runner.Worker' } |
-
 Select-Object TimeCreated,@{N='SourceProcess';E={$\_.Properties[5].Value}},@{N='TargetProcess';E={$\_.Properties[9].Value}} |
-
 Export-Csv /tmp/runner_proc_access.csv -NoTypeInformation
-
 // Sysmon Event ID 10 = ProcessAccess; detects PROCESS_VM_READ on Runner.Worker
 ```
 
@@ -310,7 +249,6 @@ Datadog Log Search — Container logs showing /proc access patterns:
 
 ```text
 source:kubernetes (message:"/proc/" OR message:"Runner.Worker" OR message:"isSecret")
-
 // Analytics: Table view, group by @kubernetes.pod_name; time range: 2026-03-19T17:00Z to 2026-03-20T00:00Z
 ```
 
@@ -318,7 +256,6 @@ Datadog Live Process Monitoring (Infrastructure \> Processes):
 
 ```text
 command:python3 user:root
-
 // Look for python3 processes with open file handles to /proc paths — review command line arguments
 ```
 
@@ -328,11 +265,8 @@ CrowdStrike Falcon — Frequency analysis of Python processes launched by runner
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | FileName = "python3"
-
 | groupBy([ComputerName, ParentBaseFileName, CommandLine], function=count(), limit=100000)
-
 | sort(\_count, order=asc, limit=50)
 ```
 
@@ -342,13 +276,9 @@ CrowdStrike Falcon — Timeline of events on hosts where python3 accessed /proc:
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | ComputerName = "<identified_host>"
-
 | ContextTimeStamp > "2026-03-19T17:00:00Z"
-
 | ContextTimeStamp < "2026-03-20T00:00:00Z"
-
 | table([ComputerName, FileName, CommandLine, ParentBaseFileName, SHA256HashData, ContextTimeStamp])
 ```
 
@@ -362,7 +292,6 @@ frame.time_relative \>= 0 && ip.dst != 10.0.0.0/8 && tcp.flags.syn == 1
 
 ```bash
 tshark -r /tmp/runner\_\*.pcap -Y "ip.dst != 10.0.0.0/8 and tcp.flags.syn == 1" \\
-
 -T fields -e frame.time_epoch -e ip.src -e ip.dst -e tcp.dstport 2>/dev/null | head -100
 ```
 
@@ -378,13 +307,9 @@ Datadog Monitor — Alert on /proc filesystem access patterns in container logs 
 
 ```text
 Type: Log Alert
-
 Query: source:kubernetes (message:"/proc/" AND message:"mem") @kubernetes.namespace_name:\*
-
 Evaluation window: last 5 minutes
-
 Alert condition: count > 0
-
 Message: "ALERT: Possible /proc/pid/mem access detected in Kubernetes pod @kubernetes.pod_name — potential in-memory secret extraction in progress @security-oncall"
 ```
 
@@ -396,9 +321,7 @@ Datadog Audit Trail — Check for any secret management API calls from CI/CD ser
 
 ```text
 source:datadog @evt.category:user_access @evt.name:secret_get
-
 // Also check for anomalous API key usage from runner source IPs during the exposure window
-
 YARA memory scan — All running Python processes for in-memory stealer indicators:
 ```
 
@@ -430,19 +353,12 @@ CrowdStrike Falcon — Outbound connections to TeamPCP C2 IP with process contex
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | RemoteAddressIP4 = "45.148.10.212"
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]), limit=100000)},
-
 field=[aid,RawProcessId],
-
 include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]
-
 )
-
 | table([ComputerName, FileName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName, timestamp])
 ```
 
@@ -450,9 +366,7 @@ CrowdStrike Falcon — DNS queries for typosquatted aquasecurtiy domain:
 
 ```text
 #event_simpleName = "DnsRequest"
-
 | DomainName = /aquasecurtiy/i
-
 | table([ComputerName, DomainName, IpAddress, RequestType, timestamp])
 ```
 
@@ -462,23 +376,14 @@ CrowdStrike Falcon — Outbound HTTPS connections to any non-RFC-1918 address fr
 
 ```bash
 #event_simpleName = "NetworkConnectIP4"
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]), limit=100000)},
-
 field=[aid,RawProcessId],
-
 include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]
-
 )
-
 | FileName = "python3"
-
 | not cidr(RemoteAddressIP4, subnet=["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16","127.0.0.0/8"])
-
 | table([ComputerName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName, timestamp])
-
 tcpdump — Targeted capture on TeamPCP C2 IP and typosquatted domain on runner host:
 ```
 
@@ -490,13 +395,9 @@ Windows Event ID collection (Windows runners) — Network connections from pytho
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156; StartTime=(Get-Date).AddDays(-3)} |
-
 Where-Object { $\_.Properties[1].Value -match 'python' } |
-
 Select-Object TimeCreated,@{N='Application';E={$\_.Properties[1].Value}},@{N='DestAddr';E={$\_.Properties[5].Value}},@{N='DestPort';E={$\_.Properties[6].Value}} |
-
 Where-Object { $\_.DestAddr -notmatch '^(10|172\\(1[6-9]|2[0-9]|3[01])|192\\168\\)' } |
-
 Export-Csv /tmp/python_network_events.csv -NoTypeInformation
 ```
 
@@ -506,13 +407,9 @@ Datadog Log Search — Container network activity to TeamPCP C2:
 
 ```text
 source:kubernetes @network.destination.ip:45.148.10.212
-
 // Alternative if network logs are not in Datadog:
-
 source:cloudtrail @evt.name:CreateNetworkAclEntry
-
 // Data source gap note: VPC flow logs must be enabled and forwarded to Datadog for L3 visibility;
-
 // if unavailable, fall back to Datadog NPM (Network Performance Monitoring) if deployed on runner hosts
 ```
 
@@ -520,7 +417,6 @@ Datadog Live Process Monitoring (Infrastructure \> Processes):
 
 ```text
 command:python3 user:root
-
 // Correlate python3 processes on runner hosts at timestamps matching the exposure window
 ```
 
@@ -530,23 +426,14 @@ CrowdStrike Falcon — Frequency analysis: all external destinations contacted b
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([FileName,CommandLine,ParentBaseFileName]), limit=100000)},
-
 field=[aid,RawProcessId],
-
 include=[FileName,CommandLine,ParentBaseFileName]
-
 )
-
 | FileName = "python3"
-
 | not cidr(RemoteAddressIP4, subnet=["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"])
-
 | groupBy([RemoteAddressIP4, RemotePort, ComputerName], function=count(), limit=100000)
-
 | sort(\_count, order=asc, limit=50)
 ```
 
@@ -554,11 +441,8 @@ CrowdStrike Falcon — DNS rarity analysis for unusual domains queried by runner
 
 ```text
 #event_simpleName = "DnsRequest"
-
 | groupBy([DomainName, ComputerName], function=count(), limit=100000)
-
 | sort(\_count, order=asc, limit=100)
-
 // Look for single-occurrence domain queries — high suspicion for C2 beacons
 ```
 
@@ -594,9 +478,7 @@ Datadog CloudTrail — Check for unauthorized cloud API calls using exfiltrated 
 
 ```text
 source:cloudtrail @evt.name:(AssumeRole OR GetSecretValue OR CreateUser OR AttachUserPolicy OR PutBucketPolicy) -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
-
 // Analytics: Table view, group by @userIdentity.arn, @network.client.ip; time range above
-
 // Look for calls from unexpected source IPs using CI/CD service account ARNs
 ```
 
@@ -610,9 +492,7 @@ Query: @network.destination.ip:45.148.10.212
 
 ```text
 Evaluation window: last 5 minutes
-
 Alert condition: count > 0
-
 Message: "ALERT: Outbound connection to TeamPCP C2 IP 45.148.10.212 detected from @host — immediate network isolation of runner host required @security-oncall"
 ```
 
@@ -622,7 +502,6 @@ Datadog Audit Trail — Review API key usage from CI/CD runner source IPs:
 
 ```text
 source:datadog @evt.category:api_key_management @evt.name:api_key_created
-
 // Also check: source:datadog @evt.category:integration_management to detect new webhook or integration creation from runner IPs
 ```
 
@@ -630,11 +509,8 @@ Windows Event Log — DNS resolution events for typosquatted domain (Windows run
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-DNS-Client/Operational'; Id=3008; StartTime=(Get-Date).AddDays(-3)} |
-
 Where-Object { $\_.Message -match 'aquasecurtiy' } |
-
 Select-Object TimeCreated,@{N='DomainName';E={$\_.Properties[0].Value}} |
-
 Export-Csv /tmp/dns_aquasecurtiy.csv -NoTypeInformation
 ```
 
@@ -648,23 +524,14 @@ CrowdStrike Falcon — HTTPS connections to api.github.com from Python processes
 
 ```bash
 #event_simpleName = "DnsRequest"
-
 | DomainName = "api.github.com"
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,TargetProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]), limit=100000)},
-
 field=[aid,ContextProcessId], key=[aid,TargetProcessId],
-
 include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]
-
 )
-
 | FileName = "python3"
-
 | table([ComputerName, DomainName, FileName, CommandLine, ParentBaseFileName, timestamp])
-
 tcpdump — Capture GitHub API traffic from runner host during exposure window:
 ```
 
@@ -676,11 +543,8 @@ Windows Event ID collection (Windows runners) — GitHub API connections from py
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156; StartTime=(Get-Date).AddDays(-3)} |
-
 Where-Object { $\_.Properties[5].Value -eq '140.82.114.5' -or $\_.Properties[5].Value -match '192\\30\\' } |
-
 Select-Object TimeCreated,@{N='App';E={$\_.Properties[1].Value}},@{N='DestIP';E={$\_.Properties[5].Value}} |
-
 Export-Csv /tmp/github_api_events.csv -NoTypeInformation
 ```
 
@@ -690,9 +554,7 @@ Datadog Log Search — GitHub audit log for tpcp-docs repository creation events
 
 ```text
 source:github.audit @action:repo.create
-
 // Filter further:
-
 source:github.audit @action:repo.create @data.repository:\*tpcp\*
 ```
 
@@ -702,9 +564,7 @@ Datadog CloudTrail — GitHub API Create Repository events via AWS CodeBuild or 
 
 ```text
 source:cloudtrail @evt.name:CreateRepository @requestParameters.repositoryName:\*tpcp\*
-
 // Also check for unexpected repository visibility changes (private to public):
-
 source:cloudtrail @evt.name:UpdateRepository
 ```
 
@@ -712,7 +572,6 @@ Datadog Live Process Monitoring (Infrastructure \> Processes):
 
 ```text
 command:python3 user:runner
-
 // Look for python3 processes on runner hosts at times matching the exposure window; review full command lines
 ```
 
@@ -722,11 +581,8 @@ CrowdStrike Falcon — GitHub API DNS query frequency analysis (runner hosts mak
 
 ```text
 #event_simpleName = "DnsRequest"
-
 | DomainName = "api.github.com"
-
 | groupBy([ComputerName, DomainName], function=count(), limit=100000)
-
 | sort(\_count, order=asc, limit=50)
 ```
 
@@ -758,7 +614,6 @@ Datadog CloudTrail — Identify exfiltration patterns: unexpected file uploads t
 
 ```text
 source:cloudtrail @evt.name:PutObject @requestParameters.bucketName:\*tpcp\* -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
-
 // Analytics: Table view, group by @userIdentity.arn, @requestParameters.bucketName; time range above
 ```
 
@@ -766,13 +621,9 @@ Datadog Monitor — Alert on tpcp-docs repository creation in GitHub audit log (
 
 ```text
 Type: Log Alert
-
 Query: source:github.audit @action:repo.create @data.repository:\*tpcp\*
-
 Evaluation window: last 15 minutes
-
 Alert condition: count > 0
-
 Message: "ALERT: Repository matching 'tpcp-docs' pattern created in GitHub org by actor @actor — possible TeamPCP credential staging; revoke associated token and review audit log immediately @security-oncall"
 ```
 
@@ -782,7 +633,6 @@ Datadog Audit Trail — Review for token creation or OAuth app authorization fro
 
 ```text
 source:datadog @evt.category:api_key_management
-
 // Check for any new API key or OAuth app created from IP ranges associated with runner infrastructure during or after the exposure window
 ```
 
@@ -812,83 +662,41 @@ The following SIGMA rule detects the malicious Trivy binary spawning unexpected 
 
 ```yaml
 title: TeamPCP Malicious Trivy Binary Spawning Unexpected Child Process
-
 id: a4f1c2d3-8b5e-4a7f-9c0d-1e2f3a4b5c6d
-
 status: experimental
-
 description: Detects the Trivy vulnerability scanner spawning Python, curl, wget, or shell child processes, which is consistent with the TeamPCP-injected credential stealer executed via the malicious Trivy v0.69.4 supply chain compromise.
-
 references:
-```
-
-\- https://www.stepsecurity.io/blog/trivy-compromised-a-second-time---malicious-v0-69-4-release
-
-```yaml
+- https://www.stepsecurity.io/blog/trivy-compromised-a-second-time---malicious-v0-69-4-release
 author: 1898 & Co. Threat Hunt Team
-
 date: 2026-03-20
-
 tags:
-```
-
-\- attack.initial_access
-
-\- attack.t1195.002
-
-```yaml
+- attack.initial_access
+- attack.t1195.002
 logsource:
-```
-
 category: process_creation
-
 product: linux
-
-```yaml
 detection:
-
 selection:
-```
-
 ParentImage|endswith: '/trivy'
-
 Image|endswith:
-
-\- '/python3'
-
-\- '/python'
-
-\- '/curl'
-
-\- '/wget'
-
-\- '/sh'
-
-\- '/bash'
-
-```yaml
+- '/python3'
+- '/python'
+- '/curl'
+- '/wget'
+- '/sh'
+- '/bash'
 condition: selection
-
 falsepositives:
-```
-
-\- None expected — trivy does not legitimately spawn Python or curl processes
-
-```yaml
+- None expected — trivy does not legitimately spawn Python or curl processes
 level: critical
 ```
-
 The following SIGMA rule detects DNS resolution of the TeamPCP typosquatted C2 domain. The domain aquasecurtiy\[.\]org is a deliberate misspelling of aquasecurity.org and has no legitimate use.
 
 ```bash
 title: TeamPCP C2 Typosquatted Domain DNS Resolution
-
 id: b5e2d3f4-9c6a-4b8e-0d1f-2a3b4c5d6e7f
-
 status: stable
-
 description: Detects DNS resolution of scan.aquasecurtiy[.]org or the root domain aquasecurtiy[.]org — a typosquatted domain used as primary C2 in the TeamPCP Trivy supply chain attack. The misspelling of aquasecurity (missing the 'i' in security) is the key discriminator.
-
 references:
 ```
 
@@ -896,174 +704,80 @@ references:
 
 ```yaml
 author: 1898 & Co. Threat Hunt Team
-
 date: 2026-03-20
-
 tags:
-```
-
-\- attack.exfiltration
-
-\- attack.t1041
-
-\- attack.command_and_control
-
-```yaml
+- attack.exfiltration
+- attack.t1041
+- attack.command_and_control
 logsource:
-```
-
 category: dns_query
-
 product: linux
-
-```yaml
 detection:
-
 selection:
-```
-
 QueryName|contains: 'aquasecurtiy'
-
-```yaml
 condition: selection
-
 falsepositives:
-```
-
-\- None — this is a typosquatted domain with no legitimate use
-
-```yaml
+- None — this is a typosquatted domain with no legitimate use
 level: critical
 ```
-
 The following SIGMA rule detects outbound network connections from Python processes to the TeamPCP C2 IP address or Cloudflare Tunnel secondary C2. This rule targets Linux-based CI/CD runners where the credential stealer runs as a Python script.
 
 ```yaml
 title: TeamPCP Cloud Stealer Outbound C2 Connection from Python Process
-
 id: c6f3e4g5-0d7b-5c9f-1e2a-3b4c5d6e7f8a
-
 status: experimental
-
 description: Detects outbound network connections to the TeamPCP primary C2 IP (45.148.10.212) initiated by Python processes, consistent with the credential archive exfiltration step of the TeamPCP Cloud Stealer following compromise of aquasecurity/trivy-action.
-
 references:
-```
-
-\- https://www.stepsecurity.io/blog/trivy-compromised-a-second-time---malicious-v0-69-4-release
-
-```yaml
+- https://www.stepsecurity.io/blog/trivy-compromised-a-second-time---malicious-v0-69-4-release
 author: 1898 & Co. Threat Hunt Team
-
 date: 2026-03-20
-
 tags:
-```
-
-\- attack.exfiltration
-
-\- attack.t1041
-
-```yaml
+- attack.exfiltration
+- attack.t1041
 logsource:
-```
-
 category: network_connection
-
 product: linux
-
-```yaml
 detection:
-```
-
 selection_process:
-
 Image|endswith:
-
-\- '/python3'
-
-\- '/python'
-
+- '/python3'
+- '/python'
 selection_dest:
-
 DestinationIp: '45.148.10.212'
-
-```yaml
 condition: selection_process and selection_dest
-
 falsepositives:
-```
-
-\- None expected for this specific IP
-
-```yaml
+- None expected for this specific IP
 level: critical
 ```
-
 The following SIGMA rule detects Python processes reading /proc/\<pid\>/mem files, which is the mechanism used by TeamPCP Cloud Stealer to extract in-memory GitHub Actions secrets from the Runner.Worker process.
 
 ```yaml
 title: Python Process Reading /proc/pid/mem — Potential In-Memory Secret Extraction
-
 id: d7a4f5h6-1e8c-6d0a-2f3b-4c5d6e7f8a9b
-
 status: experimental
-
 description: Detects Python processes opening files matching /proc/[0-9]+/mem or /proc/[0-9]+/maps, consistent with TeamPCP Cloud Stealer reading GitHub Actions Runner.Worker process memory to extract isSecret-flagged CI/CD secrets, bypassing platform-level secret masking.
-
 references:
-```
-
-\- https://www.stepsecurity.io/blog/trivy-compromised-a-second-time---malicious-v0-69-4-release
-
-```yaml
+- https://www.stepsecurity.io/blog/trivy-compromised-a-second-time---malicious-v0-69-4-release
 author: 1898 & Co. Threat Hunt Team
-
 date: 2026-03-20
-
 tags:
-```
-
-\- attack.credential_access
-
-\- attack.t1003.007
-
-```yaml
+- attack.credential_access
+- attack.t1003.007
 logsource:
-```
-
 category: file_event
-
 product: linux
-
-```yaml
 detection:
-```
-
 selection_process:
-
 Image|endswith:
-
-\- '/python3'
-
-\- '/python'
-
+- '/python3'
+- '/python'
 selection_file:
-
 TargetFilename|re: '^/proc/\[0-9\]+/(mem|maps)\$'
-
-```yaml
 condition: selection_process and selection_file
-
 falsepositives:
-```
-
-\- Legitimate Python debugging tools (ptrace-based debuggers) that inspect process memory; suppress by monitoring host and known-good process name
-
-```yaml
+- Legitimate Python debugging tools (ptrace-based debuggers) that inspect process memory; suppress by monitoring host and known-good process name
 level: high
 ```
-
 Snort/Suricata rule detecting HTTPS connection attempts to the TeamPCP primary C2 IP, using TLS Server Name Indication (SNI) matching to catch the typosquatted domain even over TLS. This rule requires TLS inspection or JA3 fingerprinting capabilities at the network perimeter.
 
 alert tls any any -\> 45.148.10.212 443 (

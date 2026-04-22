@@ -30,13 +30,9 @@ CrowdStrike Falcon FQL — inventory monitoring/jump hosts that communicate with
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | RemotePort = "80" OR RemotePort = "443" OR RemotePort = "30718" OR RemotePort = "9999"
-
 | cidr(RemoteAddressIP4, subnet=["<converter_subnet_1>", "<converter_subnet_2>"])
-
 | join(query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]), limit=100000)}, field=[aid,RawProcessId], include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName])
-
 | table([ComputerName, FileName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName])
 ```
 
@@ -44,11 +40,8 @@ CrowdStrike Falcon FQL — detect web-client processes on admin hosts that submi
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | FileName = /^(curl\\exe|wget\\exe|python\\exe|python3\\exe|powershell\\exe|pwsh\\exe)$/i
-
 | CommandLine = /filesystem|tftp|host=|FsBrowser/i
-
 | table([ComputerName, AuthenticationId, UserName, ImageFileName, FileName, CommandLine, ParentBaseFileName])
 ```
 
@@ -68,7 +61,6 @@ Datadog Log Search — fallback visibility where Live Process Monitoring is not 
 
 ```text
 source:windows (message:"filesystem" OR message:"FsBrowser" OR message:"tftp") @network.client.ip:(<converter_subnet_1> OR <converter_subnet_2>)
-
 // time range: now - 30d to now — Analytics Table view; group by @network.client.ip, @usr.name
 ```
 
@@ -76,7 +68,6 @@ Datadog Log Search — capture HTTP traffic where the NGFW is forwarding syslog 
 
 ```text
 source:paloalto @evt.name:THREAT (@url.path:\*FsBrowser\* OR @url.path:\*filesystem\* OR @payload:\*host=\*\\\*)
-
 // time range: now - 30d to now
 ```
 
@@ -84,7 +75,6 @@ Datadog Live Process Monitoring (Infrastructure \> Processes) — curl/wget/pyth
 
 ```bash
 command:curl user:\* OR command:wget user:\* OR command:python user:\*
-
 // Free-text filter: filesystem OR FsBrowser OR tftp-host
 ```
 
@@ -92,7 +82,6 @@ Datadog source:cloudtrail — surface any unexpected AWS API activity originatin
 
 ```text
 source:cloudtrail @evt.name:(AssumeRole OR GetSessionToken) -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
-
 // time range: now - 30d to now
 ```
 
@@ -124,11 +113,8 @@ SNMP polling — rolling device-side and switch-port counter collection during h
 
 ```bash
 snmpwalk -v2c -c <community> <switch_ip> IF-MIB::ifTable
-
 snmpget -v2c -c <community> <switch_ip> IF-MIB::ifInOctets.<ifIndex> IF-MIB::ifOutOctets.<ifIndex> IF-MIB::ifInErrors.<ifIndex> IF-MIB::ifOutErrors.<ifIndex>
-
 snmpwalk -v2c -c <community> <converter_ip> system
-
 snmpwalk -v2c -c <community> <converter_ip> IF-MIB::ifTable
 ```
 
@@ -136,9 +122,7 @@ snmpwalk -v2c -c <community> <converter_ip> IF-MIB::ifTable
 
 ```bash
 snmpwalk -v3 -l authPriv -u <user> -a SHA -A <authpass> -x AES -X <privpass> <converter_ip> system
-
 YARA file-system scan — stage on admin jump hosts and forensic shares for dropped exploit tooling or captured PCAPs containing exploit strings:
-
 yara -r /opt/yara/rules/bridgebreak.yar C:\users\\ C:\ProgramData\\ C:\hunt\\ >> C:\hunt\yara-bb-disk.txt
 ```
 
@@ -148,11 +132,8 @@ CrowdStrike Falcon FQL — rate anomaly on admin-host web-client connections to 
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | cidr(RemoteAddressIP4, subnet=["<converter_subnet_1>", "<converter_subnet_2>"])
-
 | groupBy([ComputerName, RemoteAddressIP4, RemotePort], function=count(), limit=100000)
-
 | sort(\_count, order=desc, limit=50)
 ```
 
@@ -160,11 +141,8 @@ CrowdStrike Falcon FQL — rarity hunt for admin hosts that have never historica
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | cidr(RemoteAddressIP4, subnet=["<converter_subnet_1>", "<converter_subnet_2>"])
-
 | groupBy([ComputerName, FileName], function=count(), limit=100000)
-
 | sort(\_count, order=asc, limit=50)
 ```
 
@@ -188,7 +166,6 @@ Datadog Log Analytics — rate spikes in URL path hits matching exploit markers:
 
 ```text
 source:paloalto (@url.path:\*FsBrowser\* OR @url.path:\*filesystem\*) @dest.ip:(<converter_subnet_1> OR <converter_subnet_2>)
-
 // Use Timeseries view; group by @url.path; time range last 30 days — investigate any bucket with > 5x median count
 ```
 
@@ -196,7 +173,6 @@ Datadog Audit Trail — surface admin-account changes coincident with exploit wi
 
 ```text
 source:datadog @evt.category:user_access @evt.name:login
-
 // time range: now - 30d to now; group by @usr.name
 ```
 
@@ -204,13 +180,9 @@ Datadog Monitor (required):
 
 ```text
 Type: Log Alert
-
 Query: source:paloalto @url.path:\*FsBrowser\* OR source:paloalto @payload:\*host=\*\\\*
-
 Evaluation window: last 5 minutes
-
 Alert condition: count > 0
-
 Message: "ALERT: BRIDGE:BREAK CVE-2025-67041 exploit pattern observed against Lantronix EDS3000PS — immediate investigation required @pagerduty-soc"
 ```
 
@@ -252,7 +224,6 @@ Datadog Log Search — capture NGFW/WAF HTTP logs for Authorization headers and 
 
 ```text
 source:paloalto (@url.path:\*setup\* OR @url.path:\*admin\* OR @url.path:\*system\*) @http.auth_user:admin @dest.ip:(<converter_subnet_1> OR <converter_subnet_2>)
-
 // time range: now - 30d to now; Analytics Table view; group by @network.client.ip
 ```
 
@@ -260,7 +231,6 @@ Datadog Log Search — alternate: surface any management-path hit from a non-bas
 
 ```text
 source:paloalto @dest.ip:(<converter_subnet_1> OR <converter_subnet_2>) @url.path:\*
-
 // time range: now - 30d to now; Analytics Top List view; group by @network.client.ip
 ```
 
@@ -268,7 +238,6 @@ Datadog Live Process Monitoring — admin-host processes generating crafted HTTP
 
 ```bash
 command:curl user:\* OR command:python user:\*
-
 // Free-text filter: Authorization OR admin\\\\ OR auth=admin
 ```
 
@@ -288,9 +257,7 @@ CrowdStrike Falcon FQL — hunt admin-host processes that embed Basic-admin Auth
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | CommandLine = /Authorization.\*(Basic\s+YWRt|admin:)/i
-
 | table([ComputerName, AuthenticationId, UserName, FileName, CommandLine, ParentBaseFileName])
 ```
 
@@ -308,7 +275,6 @@ OT Data Collection: Forescout eyeInspect — Threat Detection panel; inspect HTT
 
 ```text
 YARA file-system scan — scan for stored exploit scripts or captured requests with auth-bypass patterns:
-
 yara -r /opt/yara/rules/bridgebreak.yar /var/pcap/ C:\hunt\\ >> /var/log/yara-bb-authbypass.txt
 ```
 
@@ -318,15 +284,12 @@ Datadog Log Analytics — rate anomalies and unauthorized-source analysis:
 
 ```yaml
 source:paloalto @dest.ip:(<converter_subnet_1> OR <converter_subnet_2>) @status:200 @http.auth_user:admin
-
 // Use Timeseries view; group by @network.client.ip; time range last 30 days; investigate any source IP outside the admin allowlist
 ```
-
 Datadog Audit Trail — correlate with any Datadog admin account changes in the same window:
 
 ```text
 source:datadog @evt.category:user_management @evt.name:(role_change OR user_created)
-
 // time range: now - 30d to now
 ```
 
@@ -334,18 +297,12 @@ Datadog Monitor (required):
 
 ```yaml
 Type: Log Alert
-
 Query: source:paloalto @dest.ip:(<converter_subnet_1> OR <converter_subnet_2>) @status:200 @http.auth_user:admin -@network.client.ip:<admin_subnet>
-
 Evaluation window: last 10 minutes
-
 Alert condition: count > 0
-
 Message: "ALERT: Unauthenticated-admin access pattern on BRIDGE:BREAK converter — verify source IP against admin allowlist @pagerduty-soc"
-```
-
 Prerequisites: NGFW logs with URL filtering and Authorization header visibility forwarded to Datadog
-
+```
 Wireshark display filter — inspect Authorization header patterns reaching converter IPs:
 
 http.authorization contains "admin:" or http.request.uri matches "(setup|admin|system)\[^/\]\*\$"
@@ -358,9 +315,7 @@ Windows Event Log PowerShell analysis — correlate admin-host logons within 5 m
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4624; StartTime=(Get-Date).AddDays(-30)} | Where-Object { $\_.Properties[8].Value -eq 3 } | Export-Csv -Path C:\hunt\bb-h2-logon.csv -NoTypeInformation
-
 YARA memory scan — detect in-memory exploit request strings in running curl/python/wget processes:
-
 Get-Process curl,wget,python,pwsh -ErrorAction SilentlyContinue | ForEach-Object { yara -p $\_.Id C:\hunt\rules\bridgebreak.yar >> C:\hunt\yara-bb-mem-h2.txt }
 ```
 
@@ -386,7 +341,6 @@ Datadog Log Search — firmware-update and reboot indications from forwarded sys
 
 ```text
 source:syslog (message:"firmware" OR message:"reboot" OR message:"coldStart" OR message:"warmStart") @host.ip:(<converter_ip_list>)
-
 // time range: now - 90d to now; Analytics Table view; group by @host.ip
 ```
 
@@ -410,7 +364,6 @@ OT Data Collection: Forescout eyeInspect — Inventory diff report comparing ass
 
 ```text
 YARA file-system scan — scan forensic image or staged firmware directory for tampered firmware signatures (absence of vendor signing-key match, presence of known bad strings):
-
 yara -r /opt/yara/rules/bridgebreak_fw.yar /mnt/forensic/ /var/firmware-staging/ >> /var/log/yara-bb-fw.txt
 ```
 
@@ -424,9 +377,7 @@ CrowdStrike Falcon FQL — monitoring/jump hosts that wrote a firmware image to 
 
 ```text
 #event_simpleName = "NewExecutableWritten"
-
 | TargetFileName = /silex|sd-?330|firmware.\*\\(bin|img|rom)$/i
-
 | table([ComputerName, TargetFileName, FilePath, ContextProcessId])
 ```
 
@@ -436,7 +387,6 @@ Datadog Log Analytics — firmware-event baseline deviation:
 
 ```text
 source:syslog (message:"firmware" OR message:"Firmware uploaded" OR message:"warmStart") @host.ip:(<silex_ip_list>)
-
 // Use Timeseries view; group by @host.ip; time range last 90 days; any non-maintenance-window bucket is suspect
 ```
 
@@ -444,13 +394,9 @@ Datadog Monitor (required):
 
 ```text
 Type: Log Alert
-
 Query: source:syslog (message:"firmware" OR message:"warmStart" OR message:"coldStart") @host.ip:(<silex_ip_list>)
-
 Evaluation window: last 15 minutes
-
 Alert condition: count > 0 outside maintenance window
-
 Message: "ALERT: Firmware/reboot event on Silex SD-330AC outside change window — potential BRIDGE:BREAK firmware tampering @pagerduty-soc"
 ```
 
@@ -468,7 +414,6 @@ OT Protocol Analysis — compare current device hashes to known-good vendor firm
 
 ```powershell
 YARA memory scan — on any Windows admin host suspected to have pushed firmware; scan active sessions and transfer processes:
-
 Get-Process | Where-Object { $\_.ProcessName -match 'AMCManager|curl|wget|python' } | ForEach-Object { yara -p $\_.Id C:\hunt\rules\bridgebreak_fw.yar >> C:\hunt\yara-bb-fw-mem.txt }
 ```
 
@@ -496,7 +441,6 @@ Datadog Log Search — flow records showing converter-originated east-west traff
 
 ```text
 source:netflow @network.source.ip:(<converter_subnet_1> OR <converter_subnet_2>) -@network.destination.ip:(<admin_jump_subnet>)
-
 // time range: now - 30d to now; Analytics Table view; group by @network.destination.ip, @network.destination.port
 ```
 
@@ -510,11 +454,8 @@ CrowdStrike Falcon FQL — engineering workstations that received connections fr
 
 ```text
 #event_simpleName = "NetworkReceiveAcceptIP4"
-
 | cidr(RemoteAddressIP4, subnet=["<converter_subnet_1>", "<converter_subnet_2>"])
-
 | join(query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]), limit=100000)}, field=[aid,RawProcessId], include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName])
-
 | table([ComputerName, FileName, RemoteAddressIP4, LocalPort, CommandLine, ParentBaseFileName])
 ```
 
@@ -542,7 +483,6 @@ SNMP polling — hunt for interface error/utilization spikes on switch ports fac
 
 ```bash
 snmpwalk -v2c -c <community> <ot_switch_ip> IF-MIB::ifTable
-
 snmpget -v2c -c <community> <ot_switch_ip> IF-MIB::ifInOctets.<plc_port> IF-MIB::ifInErrors.<plc_port>
 ```
 
@@ -568,7 +508,6 @@ Datadog Log Analytics — flow deltas:
 
 ```text
 source:netflow @network.source.ip:(<converter_subnet_1> OR <converter_subnet_2>)
-
 // Use Top List view; group by @network.destination.ip; compare against previous 30-day period; any new destination is suspect
 ```
 
@@ -576,13 +515,9 @@ Datadog Monitor (required):
 
 ```text
 Type: Log Alert
-
 Query: source:netflow @network.source.ip:(<converter_subnet_1> OR <converter_subnet_2>) -@network.destination.ip:(<baseline_destination_subnet>)
-
 Evaluation window: last 5 minutes
-
 Alert condition: count > 0
-
 Message: "ALERT: New east-west flow from BRIDGE:BREAK converter — validate against baseline @pagerduty-soc"
 ```
 
@@ -592,9 +527,7 @@ CrowdStrike Falcon FQL — unexpected process on engineering workstation coincid
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | FileName = /^(rslogix5000\\exe|studio5000\\exe|logixdesigner\\exe|opc.\*\\exe)$/i
-
 | table([ComputerName, AuthenticationId, UserName, ImageFileName, FileName, CommandLine, ParentBaseFileName])
 ```
 
@@ -604,7 +537,6 @@ OT Protocol Analysis — Claroty/Dragos/Nozomi baseline-deviation reports: any n
 
 ```powershell
 YARA memory scan — on engineering workstations and historian servers that received connections from the converter:
-
 Get-Process | Where-Object { $\_.ProcessName -match 'rslogix|studio5000|opc|historian|pi.\*' } | ForEach-Object { yara -p $\_.Id C:\hunt\rules\bridgebreak.yar >> C:\hunt\yara-bb-h4-mem.txt }
 ```
 
@@ -632,234 +564,115 @@ Ransomware affiliates and initial-access brokers are the middle tier. They will 
 
 ```yaml
 title: BRIDGE:BREAK Lantronix EDS3000PS Authentication Bypass Pattern
-
 id: 7a1e3b21-6f2c-4f9a-9c7a-2b8d0c1e4f61
-
 status: experimental
-
 description: Detects HTTP requests to Lantronix EDS3000PS management pages that include the alternate-path URL suffix and an Authorization header containing admin as the user, consistent with CVE-2025-67039.
-
 references:
-```
-
-\- https://nvd.nist.gov/vuln/detail/CVE-2025-67039
-
-\- https://www.cisa.gov/news-events/ics-advisories/icsa-26-069-02
-
-```yaml
+- https://nvd.nist.gov/vuln/detail/CVE-2025-67039
+- https://www.cisa.gov/news-events/ics-advisories/icsa-26-069-02
 author: 1898 & Co. Threat Hunt
-
 date: 2026-04-22
-
 tags:
-```
-
-\- attack.initial_access
-
-\- attack.t1190
-
-\- cve.2025.67039
-
-```yaml
+- attack.initial_access
+- attack.t1190
+- cve.2025.67039
 logsource:
-```
-
 category: proxy
-
 product: paloalto
-
-```yaml
 detection:
-```
-
 selection_dest:
-
 dst_ip|contains:
-
-\- '\<converter_subnet_1\>'
-
-\- '\<converter_subnet_2\>'
-
+- '\<converter_subnet_1\>'
+- '\<converter_subnet_2\>'
 selection_hdr:
-
 cs-uri-stem|re: '(setup|admin|system)\[^/\]\*\$'
-
 http-auth-user: 'admin'
-
-```yaml
 condition: selection_dest and selection_hdr
-
 falsepositives:
-```
-
-\- Legitimate administrative browser sessions on admin jump hosts within the allowlisted admin subnet
-
-```yaml
+- Legitimate administrative browser sessions on admin jump hosts within the allowlisted admin subnet
 level: high
 ```
-
 #### SIGMA Rule 2 — network_connection category: Outbound TFTP from converter IP ranges
 
 ```yaml
 title: BRIDGE:BREAK Converter Outbound TFTP (CVE-2025-67041 Exploit Post-Condition)
-
 id: 1c2d3e4f-5a6b-47c8-9d0e-1f2a3b4c5d6e
-
 status: experimental
-
 description: Detects outbound TFTP connections from serial-to-IP converter IP ranges, an expected artifact of the CVE-2025-67041 TFTP client command-injection exploit.
-
 references:
-```
-
-\- https://nvd.nist.gov/vuln/detail/CVE-2025-67041
-
-\- https://www.cisa.gov/news-events/ics-advisories/icsa-26-069-02
-
-```yaml
+- https://nvd.nist.gov/vuln/detail/CVE-2025-67041
+- https://www.cisa.gov/news-events/ics-advisories/icsa-26-069-02
 author: 1898 & Co. Threat Hunt
-
 date: 2026-04-22
-
 tags:
-```
-
-\- attack.execution
-
-\- attack.t1059.004
-
-\- cve.2025.67041
-
-```yaml
+- attack.execution
+- attack.t1059.004
+- cve.2025.67041
 logsource:
-```
-
 category: network_connection
-
 product: zeek
-
-```yaml
 detection:
-
 selection:
-```
-
 src_ip|contains:
-
-\- '\<converter_subnet_1\>'
-
-\- '\<converter_subnet_2\>'
-
+- '\<converter_subnet_1\>'
+- '\<converter_subnet_2\>'
 dst_port: 69
-
-```yaml
 condition: selection
-
 falsepositives:
-```
-
-\- Legitimate TFTP file transfer during documented firmware distribution windows
-
-```yaml
+- Legitimate TFTP file transfer during documented firmware distribution windows
 level: high
 ```
-
 #### SIGMA Rule 3 — process_creation category on admin hosts: curl/python invocation with BRIDGE:BREAK exploit markers
 
 ```yaml
 title: BRIDGE:BREAK Admin Host Exploit Client Invocation
-
 id: 2b3c4d5e-6f7a-48b9-ac1d-2e3f4a5b6c7d
-
 status: experimental
-
 description: Detects curl, wget, python, or PowerShell Invoke-WebRequest invocations on admin or engineering hosts whose command line matches known BRIDGE:BREAK exploit URL fragments or Authorization header patterns.
-
 references:
-```
-
-\- https://www.cisa.gov/news-events/ics-advisories/icsa-26-069-02
-
-\- https://www.cisa.gov/news-events/ics-advisories/icsa-26-111-10
-
-```yaml
+- https://www.cisa.gov/news-events/ics-advisories/icsa-26-069-02
+- https://www.cisa.gov/news-events/ics-advisories/icsa-26-111-10
 author: 1898 & Co. Threat Hunt
-
 date: 2026-04-22
-
 tags:
-```
-
-\- attack.initial_access
-
-\- attack.t1190
-
-\- attack.execution
-
-\- attack.t1059
-
-```yaml
+- attack.initial_access
+- attack.t1190
+- attack.execution
+- attack.t1059
 logsource:
-```
-
 category: process_creation
-
 product: windows
-
-```yaml
 detection:
-```
-
 selection_img:
-
 Image|endswith:
-
-\- '\curl.exe'
-
-\- '\wget.exe'
-
-\- '\python.exe'
-
-\- '\python3.exe'
-
-\- '\powershell.exe'
-
-\- '\pwsh.exe'
-
+- '\curl.exe'
+- '\wget.exe'
+- '\python.exe'
+- '\python3.exe'
+- '\powershell.exe'
+- '\pwsh.exe'
 selection_cmd:
-
 CommandLine|re: '(filesystem|FsBrowser|ltrx_evo|host=\[^& \]\*\[;|\`\]|Authorization.\*Basic\s+YWRt)'
-
-```yaml
 condition: selection_img and selection_cmd
-
 falsepositives:
-```
-
-\- Red-team or penetration-test engagements targeting converter devices with documented scope
-
-```yaml
+- Red-team or penetration-test engagements targeting converter devices with documented scope
 level: high
 ```
-
 #### Snort/Suricata Rule 1 — HTTP URI pattern for Lantronix EDS3000PS TFTP host-parameter command injection (CVE-2025-67041)
 
 ```yaml
 alert http any any -> <converter_ip_list> any (msg:"BRIDGE:BREAK Lantronix EDS3000PS TFTP Host Parameter Command Injection Attempt"; flow:to_server,established; http.uri; content:"FsBrowser"; nocase; http.uri; pcre:"/host=[^&]\*[;|\`\\\]/i"; threshold: type limit, track by_src, count 1, seconds 60; classtype:web-application-attack; reference:cve,2025-67041; reference:url,nvd.nist.gov/vuln/detail/CVE-2025-67041; sid:100026001; rev:1; metadata:campaign BridgeBreak, product Lantronix EDS3000PS;)
 ```
-
 #### Snort/Suricata Rule 2 — HTTP Authorization header pattern for Lantronix EDS3000PS auth bypass (CVE-2025-67039)
 
 ```yaml
 alert http any any -> <converter_ip_list> any (msg:"BRIDGE:BREAK Lantronix EDS3000PS Authentication Bypass Pattern"; flow:to_server,established; http.uri; pcre:"/(setup|admin|system)[^/]\*$/i"; http.header; content:"Authorization: Basic YWRt"; nocase; threshold: type limit, track by_src, count 1, seconds 60; classtype:attempted-admin; reference:cve,2025-67039; reference:url,nvd.nist.gov/vuln/detail/CVE-2025-67039; sid:100026002; rev:1; metadata:campaign BridgeBreak, product Lantronix EDS3000PS;)
 ```
-
 #### Snort/Suricata Rule 3 — HTTP POST pattern for Silex SD-330AC heap overflow via redirect URL (CVE-2026-32956)
 
 ```yaml
 alert http any any -> <silex_ip_list> any (msg:"BRIDGE:BREAK Silex SD-330AC Redirect URL Overflow Attempt"; flow:to_server,established; http.uri; content:"login"; nocase; http.request_body; pcre:"/redirect[=]?[^&]{200,}/i"; threshold: type limit, track by_src, count 1, seconds 60; classtype:attempted-admin; reference:cve,2026-32956; reference:url,nvd.nist.gov/vuln/detail/CVE-2026-32956; sid:100026003; rev:1; metadata:campaign BridgeBreak, product Silex SD-330AC;)
 ```
-
 #### YARA Rule 1 (disk artifacts) — BridgeBreak_Exploit_Artifacts_OnDisk: this rule targets staged exploit payloads, PCAP captures, and scripts on analyst or admin hosts that contain BRIDGE:BREAK-specific exploit URL fragments and Authorization header patterns. The condition is structured as any-of so a single unambiguous string from either the Lantronix chain (FsBrowser, ltrx_evo) or the Silex chain (redirect-URL-overflow probe) yields a hit while still allowing multi-indicator corroboration for high-confidence escalation. Fragment strings are narrow and codepoint-specific to minimize false positives against generic HTTP fuzzing corpora.
 
 ```yara

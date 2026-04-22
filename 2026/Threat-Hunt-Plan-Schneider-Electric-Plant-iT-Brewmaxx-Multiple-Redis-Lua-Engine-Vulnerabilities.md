@@ -22,9 +22,7 @@ Execution | T1190 — Exploit Public-Facing Application | Redis is network-acces
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | ParentBaseFileName = /redis-server/i
-
 | table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId])
 ```
 
@@ -32,11 +30,8 @@ Execution | T1190 — Exploit Public-Facing Application | Redis is network-acces
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | ParentBaseFileName = /redis-server/i
-
 | FileName = /^(cmd\\exe|powershell\\exe|wscript\\exe|cscript\\exe|mshta\\exe|certutil\\exe|bitsadmin\\exe|rundll32\\exe|regsvr32\\exe|wmic\\exe|net\\exe|net1\\exe)$/i
-
 | table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId])
 ```
 
@@ -44,9 +39,7 @@ Execution | T1190 — Exploit Public-Facing Application | Redis is network-acces
 
 ```text
 #event_simpleName = "NewExecutableWritten"
-
 | TargetFileName = /redis/i
-
 | table([ComputerName, TargetFileName, FilePath, ContextProcessId])
 ```
 
@@ -66,23 +59,18 @@ tcpdump -i eth0 -w /captures/redis_host\_%Y%m%d\_%H%M.pcap -G 1800 -C 200 "host 
 
 ```yaml
 source:windows @EventID:4688 @ParentProcessName:"redis-server.exe"
-
 // time range: 90 days prior to patch date to current
 ```
-
 #### Datadog Log Search — All redis-server.exe process creation events for baseline
 
 ```yaml
 source:windows @EventID:4688 message:"redis-server.exe"
-
 // time range: hunt window; collect for process tree analysis
 ```
-
 #### Datadog Live Process Monitoring — Verify Redis service account and command line
 
 ```text
 command:redis-server
-
 // Infrastructure \> Processes; flag any redis-server.exe not running as expected NT SERVICE account
 ```
 
@@ -98,17 +86,11 @@ Event ID 7034 (Service Crashed Unexpectedly): collect from System log for Redis 
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security';Id=4688;StartTime=(Get-Date).AddDays(-90)} |
-
 Where-Object {$\_.Message -match 'redis-server'} |
-
 Select-Object TimeCreated,
-
 @{N='NewProcess';E={$\_.Properties[5].Value}},
-
 @{N='CommandLine';E={$\_.Properties[8].Value}},
-
 @{N='ParentProcess';E={$\_.Properties[13].Value}} |
-
 Export-Csv -Path C:\hunt\redis_proc_creation.csv -NoTypeInformation
 ```
 
@@ -128,9 +110,7 @@ Export-Csv -Path C:\hunt\redis_proc_creation.csv -NoTypeInformation
 
 ```text
 yara -r redis_lua_rce.yar C:\ProgramData\Redis\\ >> C:\hunt\yara_redis_hits.txt
-
 yara -r redis_lua_rce.yar C:\Windows\Temp\\ >> C:\hunt\yara_redis_hits.txt
-
 yara -r redis_lua_rce.yar "C:\Program Files\Redis\\ >> C:\hunt\yara_redis_hits.txt
 ```
 
@@ -140,11 +120,8 @@ yara -r redis_lua_rce.yar "C:\Program Files\Redis\\ >> C:\hunt\yara_redis_hits.t
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | ParentBaseFileName = /redis-server/i
-
 | groupBy([ComputerName, FileName, CommandLine], function=count(), limit=100000)
-
 | sort(\_count, order=asc, limit=50)
 ```
 
@@ -152,21 +129,13 @@ yara -r redis_lua_rce.yar "C:\Program Files\Redis\\ >> C:\hunt\yara_redis_hits.t
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | RemotePort != 6379
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]), limit=100000)},
-
 field=[aid,RawProcessId],
-
 include=[ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]
-
 )
-
 | FileName = /redis-server/i
-
 | table([ComputerName, FileName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName])
 ```
 
@@ -194,15 +163,12 @@ tshark -r /captures/redis_capture.pcap -Y 'tcp.port==6379 && tcp.flags.push==1' 
 
 ```yaml
 source:windows @EventID:4688 @ParentProcessName:"redis-server.exe"
-
 // Analytics: Top List view, group by @NewProcessName; time range: hunt window; sort ascending for rarest first
 ```
-
 #### Datadog Audit Trail — Administrative access to Datadog agents on Plant iT servers
 
 ```text
 source:datadog @evt.category:user_access @evt.name:login
-
 // time range: hunt window; flag logins from unexpected source IPs to Datadog agents on application servers
 ```
 
@@ -210,7 +176,6 @@ source:datadog @evt.category:user_access @evt.name:login
 
 ```text
 source:cloudtrail @evt.name:(AssumeRole OR GetSecretValue OR DescribeInstances) -@network.client.ip:10.\* -@network.client.ip:172.16.\*
-
 // Analytics: Table view, group by @network.client.ip, @userIdentity.arn; time range: hunt window
 ```
 
@@ -218,11 +183,8 @@ source:cloudtrail @evt.name:(AssumeRole OR GetSecretValue OR DescribeInstances) 
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='System';Id=7034;StartTime=(Get-Date).AddDays(-90)} |
-
 Where-Object {$\_.Message -match 'Redis'} |
-
 Select-Object TimeCreated, Message |
-
 Export-Csv -Path C:\hunt\redis_service_crashes.csv -NoTypeInformation
 ```
 
@@ -230,13 +192,9 @@ Export-Csv -Path C:\hunt\redis_service_crashes.csv -NoTypeInformation
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security';Id=4698;StartTime=(Get-Date).AddDays(-90)} |
-
 Select-Object TimeCreated,
-
 @{N='TaskName';E={$\_.Properties[0].Value}},
-
 @{N='TaskContent';E={$\_.Properties[1].Value}} |
-
 Export-Csv -Path C:\hunt\scheduled_tasks.csv -NoTypeInformation
 ```
 
@@ -250,18 +208,12 @@ tshark -r /captures/ot_segment.pcap -Y 'mbtcp.modbus.func_code == 16 || mbtcp.mo
 
 ```yaml
 Type: Log Alert
-
 Query: source:windows @EventID:4688 @ParentProcessName:"redis-server.exe"
-
 Evaluation window: last 5 minutes
-
 Alert condition: count > 0
-
 Message: "ALERT: redis-server.exe spawned child process {{@NewProcessName}} on {{host.name}} — possible CVE-2025-49844/CVE-2025-46817 exploitation. Immediate investigation required. @security-oncall"
-```
-
 Prerequisites: Windows Security Event Log (EventID 4688 with command line auditing) forwarded to Datadog from all Plant iT application servers; Audit Process Creation group policy and command line logging registry key enabled on all in-scope hosts
-
+```
 Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 
 #### YARA memory scan — Redis process memory for active Lua RCE artifacts
@@ -270,7 +222,6 @@ Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 
 ```text
 yara redis_lua_rce.yar $pid >> C:\hunt\yara_redis_mem_hits.txt
-
 // CrowdStrike RTR: runscript -Raw=\`$p=(Get-Process redis-server -ErrorAction SilentlyContinue); if($p){yara redis_lua_rce.yar $p.Id}\` -HostIds=<agent_id>
 ```
 
@@ -288,19 +239,12 @@ Lateral Movement | T1021.001 — Remote Services: Remote Desktop Protocol | Atta
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | in(RemotePort, values=["445","3389","135","5985","5986"])
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]), limit=100000)},
-
 field=[aid,RawProcessId],
-
 include=[ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]
-
 )
-
 | table([ComputerName, FileName, RemoteAddressIP4, RemotePort, CommandLine, ParentBaseFileName])
 ```
 
@@ -308,9 +252,7 @@ include=[ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | FileName = /^(mimikatz|wce|gsecdump|procdump)$/i
-
 | table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId])
 ```
 
@@ -324,18 +266,14 @@ tcpdump -i eth0 -w /captures/lateral\_%Y%m%d\_%H%M.pcap -G 3600 -C 500 "src host
 
 ```yaml
 source:windows @EventID:4624 @LogonType:3 host:<app_server_hostname>
-
 // time range: hunt window; review TargetComputer for OT-segment hostnames
 ```
-
 #### Datadog Log Search — RemoteInteractive (RDP) logon events
 
 ```yaml
 source:windows @EventID:4624 @LogonType:10 host:<app_server_hostname>
-
 // time range: hunt window; flag any RDP logon to engineering workstations or HMIs
 ```
-
 #### Windows Event IDs to collect
 
 Event ID 4624 (Logon) with LogonType 3 (Network) or 10 (RemoteInteractive) from application server hosts during hunt window
@@ -348,19 +286,12 @@ Event ID 4776 (NTLM Credential Validation): collect from domain controllers for 
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security';Id=4624;StartTime=(Get-Date).AddDays(-90)} |
-
 Where-Object {($\_.Properties[8].Value -eq 3 -or $\_.Properties[8].Value -eq 10) -and $\_.Properties[18].Value -ne '-'} |
-
 Select-Object TimeCreated,
-
 @{N='LogonType';E={$\_.Properties[8].Value}},
-
 @{N='AccountName';E={$\_.Properties[5].Value}},
-
 @{N='SourceIP';E={$\_.Properties[18].Value}},
-
 @{N='TargetHost';E={$\_.Properties[11].Value}} |
-
 Export-Csv -Path C:\hunt\lateral_logons.csv -NoTypeInformation
 ```
 
@@ -380,9 +311,7 @@ Export-Csv -Path C:\hunt\lateral_logons.csv -NoTypeInformation
 
 ```text
 yara -r cred_dump_tools.yar C:\Windows\Temp\\ >> C:\hunt\yara_cred_hits.txt
-
 yara -r cred_dump_tools.yar C:\Users\\ >> C:\hunt\yara_cred_hits.txt
-
 yara -r cred_dump_tools.yar C:\ProgramData\\ >> C:\hunt\yara_cred_hits.txt
 ```
 
@@ -392,21 +321,13 @@ yara -r cred_dump_tools.yar C:\ProgramData\\ >> C:\hunt\yara_cred_hits.txt
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | cidr(RemoteAddressIP4, subnet=["<ot_subnet>/24"])
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,ComputerName]), limit=100000)},
-
 field=[aid,RawProcessId],
-
 include=[ImageFileName,FileName,ComputerName]
-
 )
-
 | groupBy([ComputerName, FileName, RemoteAddressIP4], function=count(), limit=100000)
-
 | sort(\_count, order=asc, limit=50)
 ```
 
@@ -428,12 +349,9 @@ tshark -r /captures/lateral_capture.pcap -Y 'smb2.cmd == 0x0001 and ip.dst conta
 
 ```yaml
 source:windows @EventID:4624 @LogonType:3
-
 // Analytics: Table view, group by host, @TargetComputer; time range: hunt window
-
 // Flag hosts in application server subnet with elevated logon counts to OT segment
 ```
-
 #### OT network analysis — EtherNet/IP CIP service code anomalies from IT tier
 
 ```bash
@@ -444,18 +362,12 @@ tshark -r /captures/ot_segment.pcap -Y 'enip && ip.src == <app_server_ip>' -T fi
 
 ```yaml
 Type: Log Alert
-
 Query: source:windows @EventID:4624 @LogonType:3 @TargetComputer:(<ot_hostname_1> OR <ot_hostname_2>)
-
 Evaluation window: last 15 minutes
-
 Alert condition: count > 0
-
 Message: "ALERT: Network logon from {{host.name}} to OT host {{@TargetComputer}} — potential lateral movement following Redis exploitation. @security-oncall @ot-security-team"
-```
-
 Prerequisites: Windows Security Event Log (ID 4624) forwarded from all Plant iT application servers; OT Windows hosts must have Datadog Agent installed and Security Event Log forwarding enabled
-
+```
 Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 
 #### YARA memory scan — Credential dumping tools in memory of all application server processes
@@ -486,19 +398,12 @@ Impact | T1565.001 — Data Manipulation: Stored Data Manipulation | Redis serve
 
 ```text
 #event_simpleName = "RegGenericValueUpdate"
-
 | RegObjectName = /redis/i
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,TargetProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId]), limit=100000)},
-
 field=[aid,ContextProcessId], key=[aid,TargetProcessId],
-
 include=[ImageFileName,FileName,CommandLine,AuthenticationId]
-
 )
-
 | table([ComputerName, AuthenticationId, FileName, CommandLine, RegObjectName, RegValueName, RegStringValue])
 ```
 
@@ -506,9 +411,7 @@ include=[ImageFileName,FileName,CommandLine,AuthenticationId]
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | FileName = /redis-cli/i
-
 | table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId])
 ```
 
@@ -522,18 +425,14 @@ tcpdump -i eth0 -w /captures/redis_data\_%Y%m%d.pcap -G 7200 -C 500 "tcp port 63
 
 ```yaml
 source:windows @EventID:4663 @ObjectName:"\*Redis\*"
-
 // time range: hunt window; requires File System SACL auditing configured on Redis data path
 ```
-
 #### Datadog Log Search — Registry value modification on Redis configuration keys
 
 ```yaml
 source:windows @EventID:4657 message:"Redis"
-
 // time range: hunt window; requires Object Access auditing on Redis registry keys
 ```
-
 #### Windows Event IDs to collect
 
 #### - Event ID 4663 (Object Access — File): monitor Redis data directory (C:\ProgramData\Redis\\ for unauthorized file reads or writes; requires SACL on the directory
@@ -544,17 +443,11 @@ Event ID 4657 (Registry Value Modified): monitor HKLM\SOFTWARE\Redis\\ and HKLM\
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security';Id=4663;StartTime=(Get-Date).AddDays(-90)} |
-
 Where-Object {$\_.Message -match 'Redis'} |
-
 Select-Object TimeCreated,
-
 @{N='ObjectName';E={$\_.Properties[6].Value}},
-
 @{N='AccessMask';E={$\_.Properties[10].Value}},
-
 @{N='ProcessName';E={$\_.Properties[11].Value}} |
-
 Export-Csv -Path C:\hunt\redis_file_access.csv -NoTypeInformation
 ```
 
@@ -574,7 +467,6 @@ Export-Csv -Path C:\hunt\redis_file_access.csv -NoTypeInformation
 
 ```text
 yara -r redis_lua_rce.yar C:\ProgramData\Redis\data\\ >> C:\hunt\yara_redis_data_hits.txt
-
 yara -r redis_lua_rce.yar C:\ProgramData\Redis\\ >> C:\hunt\yara_redis_data_hits.txt
 ```
 
@@ -584,11 +476,8 @@ yara -r redis_lua_rce.yar C:\ProgramData\Redis\\ >> C:\hunt\yara_redis_data_hits
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | FileName = /redis-cli/i
-
 | CommandLine = /^.\*(EVAL|FUNCTION|SET|DEL|HSET|FLUSHALL|CONFIG).\*/i
-
 | table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId])
 ```
 
@@ -606,26 +495,18 @@ tshark -r /captures/redis_data_capture.pcap -Y 'tcp.port==6379 && tcp.flags.push
 
 ```yaml
 source:windows @EventID:4663 @ObjectName:"\*Redis\*"
-
 // Analytics: Table view, group by @ProcessName, @ObjectName; time range: hunt window
 ```
-
 #### Datadog Monitor — Redis registry configuration modification
 
 ```yaml
 Type: Log Alert
-
 Query: source:windows @EventID:4657 message:"Redis"
-
 Evaluation window: last 5 minutes
-
 Alert condition: count > 0
-
 Message: "ALERT: Redis registry configuration modified on {{host.name}} — possible post-exploitation persistence or configuration tampering. @security-oncall"
-```
-
 Prerequisites: Windows Security Event Log (ID 4657) forwarded to Datadog; Object Access auditing and SACL configured on HKLM\SOFTWARE\Redis registry keys
-
+```
 Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 
 #### YARA memory scan — Redis process memory for Lua code injection execution artifacts
@@ -634,7 +515,6 @@ Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 
 ```text
 yara redis_lua_rce.yar $pid >> C:\hunt\yara_redis_mem_h3.txt
-
 // CrowdStrike RTR: runscript -Raw=\`$p=(Get-Process redis-server -ErrorAction SilentlyContinue); if($p){yara redis_lua_rce.yar $p.Id}\` -HostIds=<agent_id>
 ```
 
@@ -652,11 +532,8 @@ Impact | T1499.004 — Endpoint Denial of Service: Application or System Exploit
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | FileName = /redis-server/i
-
 | groupBy([ComputerName, FileName], function=count(), limit=100000)
-
 | sort(\_count, order=desc, limit=50)
 ```
 
@@ -664,11 +541,8 @@ Impact | T1499.004 — Endpoint Denial of Service: Application or System Exploit
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | FileName = /redis-server/i
-
 | ParentBaseFileName = /services/i
-
 | table([ComputerName, FileName, CommandLine, ParentBaseFileName, ImageFileName, AuthenticationId])
 ```
 
@@ -682,18 +556,14 @@ tcpdump -i eth0 -w /captures/redis_dos\_%Y%m%d\_%H%M.pcap -G 900 -C 200 "tcp por
 
 ```yaml
 source:windows @EventID:7034 message:"Redis"
-
 // time range: hunt window; Analytics: Timeseries view, count by time; look for crash clustering
 ```
-
 #### Datadog Log Search — Redis service state transitions (started/stopped cycles)
 
 ```yaml
 source:windows @EventID:7036 message:"Redis"
-
 // time range: hunt window; correlate started/stopped timestamps to identify crash-restart cycles
 ```
-
 #### Windows Event IDs to collect
 
 Event ID 7034 (Service Crashed Unexpectedly): System log, filter for Redis service; repeated occurrences within a short window indicate active DoS exploitation
@@ -706,9 +576,7 @@ Event ID 7045 (New Service Installed): System log, flag any new services install
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='System';Id=@(7034,7036);StartTime=(Get-Date).AddDays(-90)} |
-
 Where-Object {$\_.Message -match 'Redis'} |
-
 Select-Object TimeCreated, Id, Message |
 ```
 
@@ -742,11 +610,8 @@ yara -r redis_lua_rce.yar C:\Windows\Minidump\\ >> C:\hunt\yara_crash_hits.txt
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | FileName = /redis-server/i
-
 | groupBy([ComputerName, #date(ContextTimeStamp)], function=count(), limit=100000)
-
 | sort(\_count, order=desc, limit=90)
 ```
 
@@ -764,28 +629,19 @@ tshark -r /captures/redis_dos_capture.pcap -Y 'tcp.port==6379 && tcp.flags.syn==
 
 ```yaml
 source:windows @EventID:7034 message:"Redis"
-
 // Analytics: Timeseries view, count by @EventID; time range: hunt window
-
 // A spike in crash count (>2 per 15 minutes) indicates active DoS exploitation or crash loop
 ```
-
 #### Datadog Monitor — Redis repeated service crash alert
 
 ```yaml
 Type: Log Alert
-
 Query: source:windows @EventID:7034 message:"Redis"
-
 Evaluation window: last 15 minutes
-
 Alert condition: count >= 2
-
 Message: "ALERT: Redis service has crashed {{value}} times in 15 minutes on {{host.name}} — possible CVE-2025-46819 DoS exploitation or memory corruption instability. @security-oncall @plant-operations"
-```
-
 Prerequisites: Windows System Event Log forwarded to Datadog from all Plant iT application servers; alert threshold of 2 suppresses single spurious crash while detecting active exploitation patterns
-
+```
 Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 
 #### YARA memory scan — Redis process memory immediately after service restart (before GC clears artifacts)
@@ -794,7 +650,6 @@ Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 
 ```text
 yara redis_lua_rce.yar $pid >> C:\hunt\yara_redis_post_crash.txt
-
 // Automate via Windows Service Recovery action to run scan on first failure restart event
 ```
 
@@ -822,244 +677,110 @@ The following data sources are required to execute this hunt plan in full.
 
 ```yaml
 title: Redis Server Spawning Suspicious Child Process
-
 id: 7a3c9e2b-4d18-4a7f-b6e1-52c8a1f03d9e
-
 status: experimental
-
 description: Detects redis-server.exe spawning processes commonly associated with post-exploitation activity (cmd.exe, PowerShell, scripting hosts), indicating possible successful exploitation of CVE-2025-49844 (RediShell use-after-free) or CVE-2025-46817 (integer overflow) via a crafted Lua EVAL payload.
-
 references:
-```
-
-\- https://nvd.nist.gov/vuln/detail/CVE-2025-49844
-
-\- https://www.cisa.gov/news-events/ics-advisories/icsa-26-083-03
-
-```yaml
+- https://nvd.nist.gov/vuln/detail/CVE-2025-49844
+- https://www.cisa.gov/news-events/ics-advisories/icsa-26-083-03
 author: 1898 & Co.
-
 date: 2026-03-27
-
 tags:
-```
-
-\- attack.execution
-
-\- attack.t1190
-
-\- cve.2025.49844
-
-```yaml
+- attack.execution
+- attack.t1190
+- cve.2025.49844
 logsource:
-```
-
 category: process_creation
-
 product: windows
-
-```yaml
 detection:
-
 selection:
-```
-
 ParentImage|endswith: '\redis-server.exe'
-
 Image|endswith:
-
-\- '\cmd.exe'
-
-\- '\powershell.exe'
-
-\- '\wscript.exe'
-
-\- '\cscript.exe'
-
-\- '\mshta.exe'
-
-\- '\certutil.exe'
-
-\- '\bitsadmin.exe'
-
-\- '\rundll32.exe'
-
-\- '\regsvr32.exe'
-
-\- '\wmic.exe'
-
-\- '\net.exe'
-
-\- '\net1.exe'
-
-```yaml
+- '\cmd.exe'
+- '\powershell.exe'
+- '\wscript.exe'
+- '\cscript.exe'
+- '\mshta.exe'
+- '\certutil.exe'
+- '\bitsadmin.exe'
+- '\rundll32.exe'
+- '\regsvr32.exe'
+- '\wmic.exe'
+- '\net.exe'
+- '\net1.exe'
 condition: selection
-
 falsepositives:
-```
-
-\- Administrative Redis management scripts that invoke cmd.exe or PowerShell for maintenance tasks
-
-\- Automated backup scripts configured under the Redis service account
-
-```yaml
+- Administrative Redis management scripts that invoke cmd.exe or PowerShell for maintenance tasks
+- Automated backup scripts configured under the Redis service account
 level: high
-
 title: Redis Server Initiating Outbound Non-Standard Network Connection
-
 id: 1f8b4c7a-2e93-4b5d-9c2f-86d7e4a15c3b
-
 status: experimental
-
 description: Detects redis-server.exe establishing outbound network connections to ports other than TCP 6379 or to external IP addresses, which may indicate C2 beacon or lateral movement activity following exploitation of Redis Lua engine vulnerabilities (CVE-2025-49844, CVE-2025-46817, CVE-2025-46818).
-
 references:
-```
-
-\- https://nvd.nist.gov/vuln/detail/CVE-2025-49844
-
-\- https://www.cisa.gov/news-events/ics-advisories/icsa-26-083-03
-
-```yaml
+- https://nvd.nist.gov/vuln/detail/CVE-2025-49844
+- https://www.cisa.gov/news-events/ics-advisories/icsa-26-083-03
 author: 1898 & Co.
-
 date: 2026-03-27
-
 tags:
-```
-
-\- attack.command_and_control
-
-\- attack.t1071
-
-\- cve.2025.49844
-
-```yaml
+- attack.command_and_control
+- attack.t1071
+- cve.2025.49844
 logsource:
-```
-
 category: network_connection
-
 product: windows
-
-```yaml
 detection:
-
 selection:
-```
-
 Image|endswith: '\redis-server.exe'
-
 Initiated: 'true'
-
 filter_redis_port:
-
 DestinationPort: 6379
-
 filter_localhost:
-
 DestinationIp:
-
-\- '127.0.0.1'
-
-\- '::1'
-
-```yaml
+- '127.0.0.1'
+- '::1'
 condition: selection and not filter_redis_port and not filter_localhost
-
 falsepositives:
-```
-
-\- Redis cluster replication or Sentinel health-check connections on non-standard ports in custom cluster configurations
-
-\- Redis backup agents configured to push RDB files to remote storage on custom ports
-
-```yaml
+- Redis cluster replication or Sentinel health-check connections on non-standard ports in custom cluster configurations
+- Redis backup agents configured to push RDB files to remote storage on custom ports
 level: high
-
 title: Redis Service Repeated Crash Indicating Potential Denial of Service Exploitation
-
 id: 3d2e7f9c-5a14-4e8b-c7d3-91a5b2f04e7c
-
 status: experimental
-
 description: Detects repeated Redis service crash events (EventID 7034) within a short time window, consistent with active exploitation of CVE-2025-46819 (out-of-bounds read causing denial of service) or memory corruption instability from CVE-2025-49844 exploitation attempts.
-
 references:
-```
-
-\- https://nvd.nist.gov/vuln/detail/CVE-2025-46819
-
-\- https://www.cisa.gov/news-events/ics-advisories/icsa-26-083-03
-
-```yaml
+- https://nvd.nist.gov/vuln/detail/CVE-2025-46819
+- https://www.cisa.gov/news-events/ics-advisories/icsa-26-083-03
 author: 1898 & Co.
-
 date: 2026-03-27
-
 tags:
-```
-
-\- attack.impact
-
-\- attack.t1499.004
-
-\- cve.2025.46819
-
-```yaml
+- attack.impact
+- attack.t1499.004
+- cve.2025.46819
 logsource:
-```
-
 product: windows
-
 service: system
-
-```yaml
 detection:
-
 selection:
-```
-
 EventID: 7034
-
 Message|contains: 'Redis'
-
 timeframe: 15m
-
-```yaml
 condition: selection | count() > 2
-
 falsepositives:
-```
-
-\- Redis service crashes during patch application or planned maintenance windows
-
-\- Redis crashes due to legitimate memory pressure on under-provisioned application servers
-
-```yaml
+- Redis service crashes during patch application or planned maintenance windows
+- Redis crashes due to legitimate memory pressure on under-provisioned application servers
 level: medium
-
 alert tcp any any -> any 6379 (
-```
-
 msg:"REDIS Lua EVAL Command - Potential CVE-2025-49844 RediShell Exploitation Attempt";
-
 flow:established,to_server;
-
 content:"EVAL"; nocase; depth:16;
-
 content:"loadstring"; nocase; within:4096;
-
 threshold:type both,track by_src,count 5,seconds 60;
-
 classtype:attempted-admin;
-
 sid:9002584; rev:1;
-
 reference:cve,2025-49844;
-
 metadata:affected_product Redis,created_at 2026_03_27,deployment Perimeter;
-
+```
 )
 
 ```text

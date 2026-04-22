@@ -24,21 +24,13 @@ Initial Access | T1190 — Exploit Public-Facing Application | An attacker targe
 
 ```text
 #event_simpleName = "NetworkReceiveAcceptIP4"
-
 | RemotePort = "443"
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]), limit=100000)},
-
 field=[aid,RawProcessId],
-
 include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]
-
 )
-
 | FileName = /nsaad|nscollect|ns/i
-
 | table([ComputerName, RemoteAddressIP4, RemotePort, FileName, CommandLine, ParentBaseFileName])
 ```
 
@@ -46,19 +38,12 @@ include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,ParentBaseFileName]), limit=100000)},
-
 field=[aid,RawProcessId],
-
 include=[ImageFileName,FileName,CommandLine,ParentBaseFileName]
-
 )
-
 | FileName = /ns/i
-
 | table([ComputerName, RemoteAddressIP4, RemotePort, FileName, CommandLine])
 ```
 
@@ -78,17 +63,13 @@ sudo tcpdump -i eth0 -w /tmp/netscaler_extern\_%Y%m%d\_%H%M%S.pcap -G 1800 -C 20
 
 ```yaml
 source:citrix @url:\*/saml/\* (status:error OR @http.status_code:[500 TO 599]) -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
-
 // time range: 2026-02-23T00:00Z to current
 ```
-
 #### Datadog Log Search — NetScaler application-level error events (memory/access violations)
 
 ```text
 source:citrix message:("out-of-bounds" OR "memory read" OR "segfault" OR "core dump" OR "signal 11")
-
 // time range: 2026-02-23T00:00Z to current
-
 // Note: Requires NetScaler nslog or syslog forwarded to Datadog. If not forwarded, use source:syslog host:<netscaler-hostname> instead.
 ```
 
@@ -96,7 +77,6 @@ source:citrix message:("out-of-bounds" OR "memory read" OR "segfault" OR "core d
 
 ```text
 command:ns user:root
-
 // Free text search: "nsaad" OR "nscollect" to identify anomalous NetScaler daemon activity
 ```
 
@@ -112,9 +92,7 @@ Collection command:
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4625,4648,1102; StartTime=(Get-Date).AddDays(-30)} |
-
 Select-Object TimeCreated, Id, Message |
-
 Export-Csv -Path C:\hunt\saml_auth_events.csv -NoTypeInformation
 ```
 
@@ -130,11 +108,8 @@ yara -r /etc/yara/saml_exploit_artifacts.yar /var/nslog/ /tmp/ /var/tmp/ >> /tmp
 
 ```text
 #event_simpleName = "NetworkReceiveAcceptIP4"
-
 | RemotePort = "443"
-
 | groupBy([ComputerName, RemoteAddressIP4], function=count(), limit=100000)
-
 | sort(\_count, order=desc, limit=100)
 ```
 
@@ -142,11 +117,8 @@ yara -r /etc/yara/saml_exploit_artifacts.yar /var/nslog/ /tmp/ /var/tmp/ >> /tmp
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | ParentBaseFileName = /nsaad|nsmgmt|nsnetsvc|ns/i
-
 | FileName = /sh|bash|python|perl|nc|curl|wget/i
-
 | table([ComputerName, ParentBaseFileName, FileName, CommandLine, AuthenticationId])
 ```
 
@@ -156,7 +128,6 @@ http.request.method == "POST" && http.request.uri contains "/saml" && http.conte
 
 ```bash
 tshark CLI equivalent:
-
 tshark -r /tmp/saml_inbound\_\*.pcap \\
 ```
 
@@ -172,7 +143,6 @@ http.response.code == 200 && http.content_type contains "saml" && data.len \> 65
 
 ```bash
 tshark CLI equivalent:
-
 tshark -r /tmp/saml_inbound\_\*.pcap \\
 ```
 
@@ -186,7 +156,6 @@ tshark -r /tmp/saml_inbound\_\*.pcap \\
 
 ```text
 source:citrix @url:\*/saml/\*
-
 // Table view; group by @network.client.ip; sort descending by count; time range: 2026-02-23T00:00Z to current
 ```
 
@@ -194,15 +163,12 @@ source:citrix @url:\*/saml/\*
 
 ```yaml
 source:citrix status:error
-
 // Timeseries view; group by @http.status_code; time range: 2026-02-23T00:00Z to current
 ```
-
 #### Datadog Audit Trail — API key or integration changes coinciding with NetScaler anomalies
 
 ```text
 source:datadog @evt.category:api_key_management @evt.name:created
-
 // Access via Datadog Admin > Audit Trail; time range: 2026-02-23T00:00Z to current
 ```
 
@@ -210,14 +176,10 @@ source:datadog @evt.category:api_key_management @evt.name:created
 
 ```yaml
 Type: Log Alert
-
 Query: source:citrix status:error -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
-
 Evaluation window: last 5 minutes
-
 Alert condition: count > 50
 ```
-
 #### Message: "ALERT: Elevated NetScaler error rate from external source — potential CVE-2026-3055 exploitation attempt. Immediate investigation required. @security-oncall"
 
 Prerequisites: NetScaler nslog or syslog must be forwarded to Datadog. Citrix integration or custom syslog pipeline required.
@@ -228,15 +190,10 @@ Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4625; StartTime=(Get-Date).AddDays(-30)} |
-
 Where-Object {$\_.Message -match 'SAML|Kerberos|NTLM'} |
-
 Select-Object TimeCreated, @{N='AccountName';E={$\_.Properties[5].Value}},
-
 @{N='FailureReason';E={$\_.Properties[8].Value}},
-
 @{N='SourceIP';E={$\_.Properties[19].Value}} |
-
 Export-Csv -Path C:\hunt\failed_saml_auth.csv -NoTypeInformation
 ```
 
@@ -244,7 +201,6 @@ Export-Csv -Path C:\hunt\failed_saml_auth.csv -NoTypeInformation
 
 ```text
 yara -p $(pgrep nsaad) /etc/yara/saml_exploit_artifacts.yar
-
 // Note: CrowdStrike Falcon RTR can execute YARA remotely: RTR > Run Script > yara -p <pid> rules.yar
 ```
 
@@ -262,17 +218,11 @@ Lateral Movement | T1563 — Remote Service Session Hijacking | Race condition-i
 
 ```text
 #event_simpleName = "UserLogon"
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,TargetProcessId], function=selectLast([ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]), limit=100000)},
-
 field=[aid,ContextProcessId], key=[aid,TargetProcessId],
-
 include=[ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]
-
 )
-
 | table([ComputerName, UserName, AuthenticationId, FileName, CommandLine, ParentBaseFileName])
 ```
 
@@ -280,19 +230,12 @@ include=[ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId]
 
 ```text
 #event_simpleName = "DnsRequest"
-
 | DomainName = /netscaler|citrix|vpn|gateway|aaa/i
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,TargetProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]), limit=100000)},
-
 field=[aid,ContextProcessId], key=[aid,TargetProcessId],
-
 include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]
-
 )
-
 | table([ComputerName, DomainName, IpAddress, RequestType, FileName, CommandLine])
 ```
 
@@ -312,9 +255,7 @@ sudo tcpdump -i eth0 -w /tmp/dtls_sessions\_%Y%m%d\_%H%M%S.pcap -G 1800 -C 200 \
 
 ```text
 source:citrix @http.headers.cookie:\* -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
-
 // time range: 2026-02-23T00:00Z to current
-
 // Note: Requires Citrix access logs with cookie header logging enabled. If unavailable, use source:syslog host:<netscaler-hostname> message:("session" OR "cookie") as fallback.
 ```
 
@@ -322,7 +263,6 @@ source:citrix @http.headers.cookie:\* -@network.client.ip:10.\* -@network.client
 
 ```text
 source:citrix message:("session mixup" OR "session mismatch" OR "invalid session" OR "race" OR "concurrent session")
-
 // time range: 2026-02-23T00:00Z to current
 ```
 
@@ -330,7 +270,6 @@ source:citrix message:("session mixup" OR "session mismatch" OR "invalid session
 
 ```text
 command:nsconmsg user:root
-
 // Identifies NetScaler connection message daemon activity; free text search: "nsvpnvserver" OR "nsaaa"
 ```
 
@@ -348,13 +287,9 @@ Collection command:
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4624,4634,4776,4768; StartTime=(Get-Date).AddDays(-30)} |
-
 Select-Object TimeCreated, Id, @{N='Account';E={$\_.Properties[5].Value}},
-
 @{N='LogonType';E={$\_.Properties[8].Value}},
-
 @{N='SourceIP';E={$\_.Properties[18].Value}} |
-
 Export-Csv -Path C:\hunt\gateway_logon_events.csv -NoTypeInformation
 ```
 
@@ -370,9 +305,7 @@ yara -r /etc/yara/session_hijack_artifacts.yar /tmp/ /var/tmp/ /var/nslog/ >> /t
 
 ```text
 #event_simpleName = "NetworkReceiveAcceptIP4"
-
 | groupBy([ComputerName, RemoteAddressIP4], function=count(), limit=100000)
-
 | sort(\_count, order=desc, limit=100)
 ```
 
@@ -380,11 +313,8 @@ yara -r /etc/yara/session_hijack_artifacts.yar /tmp/ /var/tmp/ /var/nslog/ >> /t
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | RemotePort = "443"
-
 | groupBy([ComputerName, RemoteAddressIP4], function=count(), limit=100000)
-
 | sort(\_count, order=desc, limit=50)
 ```
 
@@ -394,7 +324,6 @@ ssl.handshake.type == 2 && ssl.handshake.session_id_length \> 0
 
 ```bash
 tshark CLI equivalent:
-
 tshark -r /tmp/gateway_sessions\_\*.pcap \\
 ```
 
@@ -412,7 +341,6 @@ ssl.record.content_type == 23 && ip.src != ip.dst
 
 ```bash
 tshark CLI equivalent:
-
 tshark -r /tmp/gateway_sessions\_\*.pcap \\
 ```
 
@@ -426,7 +354,6 @@ tshark -r /tmp/gateway_sessions\_\*.pcap \\
 
 ```text
 source:citrix @http.headers.cookie:\*
-
 // Table view; group by @network.client.ip; time range: 2026-02-23T00:00Z to current
 ```
 
@@ -434,7 +361,6 @@ source:citrix @http.headers.cookie:\*
 
 ```text
 source:citrix message:("session" OR "auth" OR "logon")
-
 // Timeseries view; group by @http.status_code; time range: 2026-02-23T00:00Z to current
 ```
 
@@ -442,7 +368,6 @@ source:citrix message:("session" OR "auth" OR "logon")
 
 ```text
 source:cloudtrail @evt.name:(AssumeRole OR GetCredentials OR ListBuckets) -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
-
 // Analytics: Table view; group by @network.client.ip, @userIdentity.arn; time range: 2026-02-23T00:00Z to current
 ```
 
@@ -450,7 +375,6 @@ source:cloudtrail @evt.name:(AssumeRole OR GetCredentials OR ListBuckets) -@netw
 
 ```text
 source:datadog @evt.category:user_management @evt.name:user.login
-
 // Access via Datadog Admin > Audit Trail; time range: 2026-02-23T00:00Z to current
 ```
 
@@ -458,13 +382,9 @@ source:datadog @evt.category:user_management @evt.name:user.login
 
 ```text
 Type: Log Alert
-
 Query: source:citrix message:("session mixup" OR "invalid session" OR "race" OR "concurrent session")
-
 Evaluation window: last 5 minutes
-
 Alert condition: count > 0
-
 Message: "ALERT: Potential CVE-2026-4368 session confusion event detected on NetScaler gateway. Immediate session audit and investigation required. @security-oncall"
 ```
 
@@ -478,15 +398,10 @@ Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4624; StartTime=(Get-Date).AddDays(-30)} |
-
 Where-Object {$\_.Properties[18].Value -in $gatewayIPs} |
-
 Select-Object TimeCreated,
-
 @{N='Account';E={$\_.Properties[5].Value}},
-
 @{N='LogonType';E={$\_.Properties[8].Value}},
-
 @{N='SourceIP';E={$\_.Properties[18].Value}} |
 ```
 
@@ -494,7 +409,6 @@ Group-Object Account |
 
 ```powershell
 Where-Object {($\_.Group | Select-Object -ExpandProperty SourceIP | Sort-Object -Unique).Count -gt 1} |
-
 Export-Csv -Path C:\hunt\gateway_session_anomalies.csv -NoTypeInformation
 ```
 
@@ -502,7 +416,6 @@ Export-Csv -Path C:\hunt\gateway_session_anomalies.csv -NoTypeInformation
 
 ```text
 yara -p $(pgrep nsvpnd) /etc/yara/session_hijack_artifacts.yar
-
 // Note: CrowdStrike RTR can execute YARA on remote hosts via RTR > Run Script
 ```
 
@@ -520,19 +433,12 @@ Lateral Movement | T1021.001 — Remote Services: Remote Desktop Protocol | Foll
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | RemotePort = "3389"
-
 | join(
-
 query={#event_simpleName=ProcessRollup2 | groupBy([aid,RawProcessId], function=selectLast([ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]), limit=100000)},
-
 field=[aid,RawProcessId],
-
 include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]
-
 )
-
 | table([ComputerName, RemoteAddressIP4, RemotePort, FileName, CommandLine, ParentBaseFileName])
 ```
 
@@ -540,9 +446,7 @@ include=[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName]
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | FileName = /mimikatz|procdump|rundll32|comsvcs/i
-
 | table([ComputerName, FileName, CommandLine, ParentBaseFileName, AuthenticationId])
 ```
 
@@ -556,7 +460,6 @@ sudo tcpdump -i eth1 -w /tmp/lateral_rdp\_%Y%m%d\_%H%M%S.pcap -G 1800 -C 200 \\
 
 ```text
 source:windows message:("psexec" OR "wmiexec" OR "winrm" OR "invoke-command" OR "New-PSSession")
-
 // time range: 2026-02-23T00:00Z to current
 ```
 
@@ -564,7 +467,6 @@ source:windows message:("psexec" OR "wmiexec" OR "winrm" OR "invoke-command" OR 
 
 ```text
 command:mstsc user:administrator
-
 // Identify RDP client executions; free text: "psexec" OR "wmic" for lateral movement staging
 ```
 
@@ -582,9 +484,7 @@ Collection command:
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security','System','Microsoft-Windows-TaskScheduler/Operational'; Id=4648,4688,7045,4698; StartTime=(Get-Date).AddDays(-30)} |
-
 Select-Object TimeCreated, Id, Message |
-
 Export-Csv -Path C:\hunt\lateral_movement_events.csv -NoTypeInformation
 ```
 
@@ -600,11 +500,8 @@ yara -r /etc/yara/credential_dump_tools.yar C:\Windows\Temp\\ C:\Users\Public\\ 
 
 ```text
 #event_simpleName = "NetworkConnectIP4"
-
 | RemotePort = "3389"
-
 | groupBy([ComputerName, RemoteAddressIP4], function=count(), limit=100000)
-
 | sort(\_count, order=asc, limit=50)
 ```
 
@@ -612,9 +509,7 @@ yara -r /etc/yara/credential_dump_tools.yar C:\Windows\Temp\\ C:\Users\Public\\ 
 
 ```text
 #event_simpleName = "ProcessRollup2"
-
 | FileName = /mimikatz|procdump|lsass|comsvcs/i
-
 | table([ComputerName, FileName, CommandLine, ParentBaseFileName, ContextTimeStamp])
 ```
 
@@ -624,7 +519,6 @@ rdp.negotiation_request_flags && ntlmssp.auth.username
 
 ```bash
 tshark CLI equivalent:
-
 tshark -r /tmp/lateral_rdp\_\*.pcap \\
 ```
 
@@ -640,7 +534,6 @@ ntlmssp.messagetype == 3 && ip.src == ip.dst
 
 ```bash
 tshark CLI equivalent:
-
 tshark -r /tmp/lateral_rdp\_\*.pcap \\
 ```
 
@@ -656,7 +549,6 @@ tshark -r /tmp/lateral_rdp\_\*.pcap \\
 
 ```text
 source:windows message:("4648" OR "explicit credentials")
-
 // Table view; group by @usr.name; time range: 2026-02-23T00:00Z to current
 ```
 
@@ -664,7 +556,6 @@ source:windows message:("4648" OR "explicit credentials")
 
 ```text
 source:cloudtrail @evt.name:(AssumeRole OR ConsoleLogin OR CreateAccessKey) -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
-
 // Analytics: Table view; group by @network.client.ip, @userIdentity.arn; time range: 2026-02-23T00:00Z to current
 ```
 
@@ -672,11 +563,8 @@ source:cloudtrail @evt.name:(AssumeRole OR ConsoleLogin OR CreateAccessKey) -@ne
 
 ```text
 Type: Log Alert
-
 Query: source:windows message:("mimikatz" OR "procdump" OR "comsvcs" OR "MiniDump" OR "sekurlsa")
-
 Evaluation window: last 5 minutes
-
 Alert condition: count > 0
 ```
 
@@ -690,19 +578,12 @@ Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4648; StartTime=(Get-Date).AddDays(-30)} |
-
 Where-Object {$\_.Properties[12].Value -match '^(10|172\\1[6-9]|172\\2[0-9]|172\\3[01]|192\\168\\)' -eq $false} |
-
 Select-Object TimeCreated,
-
 @{N='SubjectAccount';E={$\_.Properties[1].Value}},
-
 @{N='TargetAccount';E={$\_.Properties[5].Value}},
-
 @{N='TargetServer';E={$\_.Properties[9].Value}},
-
 @{N='SourceIP';E={$\_.Properties[12].Value}} |
-
 Export-Csv -Path C:\hunt\explicit_cred_logons.csv -NoTypeInformation
 ```
 
@@ -736,11 +617,8 @@ Reconnaissance | T1595.002 — Active Scanning: Vulnerability Scanning | Automat
 
 ```text
 #event_simpleName = "NetworkReceiveAcceptIP4"
-
 | RemotePort = "443"
-
 | groupBy([ComputerName, RemoteAddressIP4], function=count(), limit=100000)
-
 | sort(\_count, order=desc, limit=100)
 ```
 
@@ -754,9 +632,7 @@ sudo tcpdump -i eth0 -w /tmp/scan_detection\_%Y%m%d\_%H%M%S.pcap -G 600 -C 100 \
 
 ```text
 source:citrix @url:\*/saml/\* -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
-
 // time range: 2026-02-23T00:00Z to current
-
 // Note: Requires Citrix access logs forwarded to Datadog. Data source gap: if Citrix logs are not forwarded, use WAF or firewall logs as fallback: source:firewall @destination.port:443.
 ```
 
@@ -764,7 +640,6 @@ source:citrix @url:\*/saml/\* -@network.client.ip:10.\* -@network.client.ip:172.
 
 ```text
 command:nshttp user:root
-
 // Identify NetScaler HTTP processing daemon activity during suspected scan windows
 ```
 
@@ -778,15 +653,10 @@ Collection command:
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156,5157; StartTime=(Get-Date).AddDays(-7)} |
-
 Where-Object {$\_.Properties[5].Value -eq '443'} |
-
 Select-Object TimeCreated, @{N='SourceIP';E={$\_.Properties[3].Value}},
-
 @{N='DestPort';E={$\_.Properties[5].Value}},
-
 @{N='Direction';E={$\_.Properties[7].Value}} |
-
 Export-Csv -Path C:\hunt\netscaler_firewall_events.csv -NoTypeInformation
 ```
 
@@ -802,9 +672,7 @@ yara -r /etc/yara/exploit_framework_artifacts.yar /tmp/ /var/tmp/ /root/ >> /tmp
 
 ```text
 #event_simpleName = "NetworkReceiveAcceptIP4"
-
 | RemotePort = "443"
-
 | top([RemoteAddressIP4, ComputerName], limit=50)
 ```
 
@@ -814,7 +682,6 @@ http.user_agent matches "(nuclei|nmap|masscan|shodan|zgrab|dirbuster|nikto|metas
 
 ```bash
 tshark CLI equivalent:
-
 tshark -r /tmp/scan_detection\_\*.pcap \\
 ```
 
@@ -828,7 +695,6 @@ tshark -r /tmp/scan_detection\_\*.pcap \\
 
 ```text
 source:citrix @url:\*/saml/\*
-
 // Timeseries view; group by @network.client.ip; time range: 2026-02-23T00:00Z to current
 ```
 
@@ -836,11 +702,8 @@ source:citrix @url:\*/saml/\*
 
 ```text
 Type: Log Alert
-
 Query: source:citrix @url:\*/saml/\* -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
-
 Evaluation window: last 1 minute
-
 Alert condition: count > 200
 ```
 
@@ -854,7 +717,6 @@ Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 
 ```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156; StartTime=(Get-Date).AddDays(-7)} |
-
 Where-Object {$\_.Properties[5].Value -eq '443'} |
 ```
 
@@ -864,7 +726,6 @@ Sort-Object Count -Descending |
 
 ```powershell
 Select-Object -First 50 Name, Count |
-
 Export-Csv -Path C:\hunt\top_source_ips.csv -NoTypeInformation
 ```
 
@@ -872,7 +733,6 @@ Export-Csv -Path C:\hunt\top_source_ips.csv -NoTypeInformation
 
 ```text
 yara -p $(pgrep -f "python|ruby|go") /etc/yara/exploit_framework_artifacts.yar
-
 // Note: CrowdStrike RTR can execute YARA on remote hosts; enumerate process IDs first via RTR > Run Script > ps aux
 ```
 
@@ -1136,250 +996,115 @@ SIGMA Rules
 
 ```yaml
 title: NetScaler SAML IDP Unauthenticated Memory Read Exploit Attempt
-
 id: 4a7f8b2d-1e3c-4a5f-8b2d-1e3c4a5f8b2d
-
 status: experimental
-
 description: Detects HTTP POST requests to NetScaler SAML IDP endpoints with anomalous payload sizes consistent with CVE-2026-3055 exploitation
-
 references:
-```
-
-\- https://support.citrix.com/support-home/kbsearch/article?articleNumber=CTX696300
-
-\- https://nvd.nist.gov/vuln/detail/CVE-2026-3055
-
-```yaml
+- https://support.citrix.com/support-home/kbsearch/article?articleNumber=CTX696300
+- https://nvd.nist.gov/vuln/detail/CVE-2026-3055
 author: 1898 & Co. Threat Intelligence
-
 date: 2026-03-25
-
 tags:
-```
-
-\- attack.initial_access
-
-\- attack.t1190
-
-\- cve.2026-3055
-
-```yaml
+- attack.initial_access
+- attack.t1190
+- cve.2026-3055
 logsource:
-```
-
 category: webserver
-
 product: citrix_netscaler
-
-```yaml
 detection:
-
 selection:
-```
-
 cs-method: POST
-
 cs-uri-stem|contains: '/saml'
-
 sc-bytes|gt: 65536
-
 filter_legitimate:
-
 c-ip|cidr:
-
-\- '10.0.0.0/8'
-
-\- '172.16.0.0/12'
-
-\- '192.168.0.0/16'
-
-```yaml
+- '10.0.0.0/8'
+- '172.16.0.0/12'
+- '192.168.0.0/16'
 condition: selection and not filter_legitimate
-
 falsepositives:
-```
-
-\- Legitimate large SAML federation responses from trusted IdP partners
-
-\- Certificate-heavy SAML assertions from enterprise IdPs with large attribute sets
-
-```yaml
+- Legitimate large SAML federation responses from trusted IdP partners
+- Certificate-heavy SAML assertions from enterprise IdPs with large attribute sets
 level: high
-
 title: NetScaler Process Spawning Unexpected Child Process
-
 id: 9c3e1d4b-2f5a-4c3e-1d4b-2f5a4c3e1d4b
-
 status: experimental
-
 description: Detects NetScaler daemon processes spawning unexpected child processes such as shells or download utilities, indicating post-exploitation command execution
-
 references:
-```
-
-\- https://nvd.nist.gov/vuln/detail/CVE-2026-3055
-
-```yaml
+- https://nvd.nist.gov/vuln/detail/CVE-2026-3055
 author: 1898 & Co. Threat Intelligence
-
 date: 2026-03-25
-
 tags:
-```
-
-\- attack.execution
-
-\- attack.t1059.004
-
-\- cve.2026-3055
-
-```yaml
+- attack.execution
+- attack.t1059.004
+- cve.2026-3055
 logsource:
-```
-
 category: process_creation
-
 product: linux
-
-```yaml
 detection:
-```
-
 selection_parent:
-
 ParentImage|contains:
-
-\- 'nsaad'
-
-\- 'nsmgmt'
-
-\- 'nsvpnd'
-
-\- 'nsnetsvc'
-
-\- 'nshttpd'
-
+- 'nsaad'
+- 'nsmgmt'
+- 'nsvpnd'
+- 'nsnetsvc'
+- 'nshttpd'
 selection_child:
-
 Image|endswith:
-
-\- '/sh'
-
-\- '/bash'
-
-\- '/python'
-
-\- '/curl'
-
-\- '/wget'
-
-\- '/nc'
-
-```yaml
+- '/sh'
+- '/bash'
+- '/python'
+- '/curl'
+- '/wget'
+- '/nc'
 condition: selection_parent and selection_child
-
 falsepositives:
-```
-
-\- Legitimate Citrix maintenance scripts running under NetScaler daemon context
-
-\- Authorized administrative shell sessions initiated by NetScaler management tooling
-
-```yaml
+- Legitimate Citrix maintenance scripts running under NetScaler daemon context
+- Authorized administrative shell sessions initiated by NetScaler management tooling
 level: critical
-
 title: Credential Dump Tool Execution on Windows Host Post-NetScaler Access
-
 id: 6b2a9f1c-3d4e-4b2a-9f1c-3d4e6b2a9f1c
-
 status: experimental
-
 description: Detects execution of credential dumping tools on Windows hosts accessible via NetScaler gateway, indicating lateral movement following CVE-2026-3055 exploitation
-
 references:
-```
-
-\- https://nvd.nist.gov/vuln/detail/CVE-2026-3055
-
-```yaml
+- https://nvd.nist.gov/vuln/detail/CVE-2026-3055
 author: 1898 & Co. Threat Intelligence
-
 date: 2026-03-25
-
 tags:
-```
-
-\- attack.credential_access
-
-\- attack.t1003.001
-
-\- cve.2026-3055
-
-```yaml
+- attack.credential_access
+- attack.t1003.001
+- cve.2026-3055
 logsource:
-```
-
 category: process_creation
-
 product: windows
-
-```yaml
 detection:
-
 selection:
-```
-
 Image|endswith:
-
-\- '\mimikatz.exe'
-
-\- '\procdump.exe'
-
-\- '\procdump64.exe'
-
+- '\mimikatz.exe'
+- '\procdump.exe'
+- '\procdump64.exe'
 CommandLine|contains:
-
-\- 'lsass'
-
-\- 'sekurlsa'
-
-\- 'lsadump'
-
+- 'lsass'
+- 'sekurlsa'
+- 'lsadump'
 selection_comsvcs:
-
 Image|endswith: '\rundll32.exe'
-
 CommandLine|contains|all:
-
-\- 'comsvcs'
-
-\- 'MiniDump'
-
-\- 'lsass'
-
-```yaml
+- 'comsvcs'
+- 'MiniDump'
+- 'lsass'
 condition: selection or selection_comsvcs
-
 falsepositives:
-```
-
-\- Authorized red team exercises with prior written approval
-
-\- Legitimate forensic investigation using approved tools
-
-```yaml
+- Authorized red team exercises with prior written approval
+- Legitimate forensic investigation using approved tools
 level: critical
 ```
-
 #### Snort/Suricata Rules
 
 ```yaml
 alert tcp any any -> $HTTP_SERVERS 443 (msg:"CVE-2026-3055 NetScaler SAML IDP Exploit Attempt - Oversized POST to SAML Endpoint"; flow:to_server,established; content:"POST"; http_method; content:"/saml"; http_uri; dsize:>8192; classtype:web-application-attack; sid:9000001; rev:1; reference:cve,2026-3055; metadata:affected_product NetScaler_ADC_Gateway, attack_target Web_Server, created_at 2026-03-25, signature_severity Major;)
-
 alert tcp $EXTERNAL_NET any -> $HTTP_SERVERS 443 (msg:"CVE-2026-3055 NetScaler SAML IDP - Scanner/Exploit Framework User-Agent"; flow:to_server,established; content:"samlIdPProfile"; nocase; pcre:"/User-Agent\s\*:\s\*(nuclei|nmap|zgrab|masscan|go-http-client|python-requests)/i"; threshold:type both, track by_src, count 5, seconds 60; classtype:attempted-recon; sid:9000002; rev:1; reference:cve,2026-3055; metadata:affected_product NetScaler_ADC_Gateway, attack_target Web_Server, created_at 2026-03-25, signature_severity Major;)
 ```
-
 6. Indicators of Compromise
 
 Network IoCs: None published in source material — monitor Citrix CTX696300 security bulletin and CISA Known Exploited Vulnerabilities catalog (https://www.cisa.gov/known-exploited-vulnerabilities-catalog) for threat actor infrastructure IoCs as exploitation activity is confirmed and attributed.
