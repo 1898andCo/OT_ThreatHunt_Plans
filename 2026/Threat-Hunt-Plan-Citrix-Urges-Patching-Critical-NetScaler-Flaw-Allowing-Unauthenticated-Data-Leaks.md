@@ -1,7 +1,6 @@
 # Threat Hunt Plan: CVE-2026-3055 & CVE-2026-4368 — Citrix NetScaler Unauthenticated Memory Leakage and Session Hijacking
 
 Date: 2026-03-25 \| Revision: 1.0
-
 # Hunt Objective and Scope
 
 This hunt targets exploitation of CVE-2026-3055, a critical (CVSS v4.0 9.3) out-of-bounds read in Citrix NetScaler ADC and NetScaler Gateway configured as SAML Identity Providers, and CVE-2026-4368, a high-severity (CVSS v4.0 7.7) race condition affecting appliances configured as gateway or AAA virtual servers. The objective is to determine whether any NetScaler appliance in the environment has been targeted for unauthenticated memory leakage or has exhibited session mix-up conditions that could indicate exploitation or unauthorized session access.
@@ -22,6 +21,7 @@ Initial Access \| T1190 — Exploit Public-Facing Application \| An attacker tar
 
 #### CrowdStrike Falcon FQL — Network connections to NetScaler SAML IDP port (data collection)
 
+```text
 \#event_simpleName = "NetworkReceiveAcceptIP4"
 
 \| RemotePort = "443"
@@ -40,8 +40,10 @@ include=\[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName
 
 \| table(\[ComputerName, RemoteAddressIP4, RemotePort, FileName, CommandLine, ParentBaseFileName\])
 
+```
 #### CrowdStrike Falcon FQL — Large or anomalous outbound transfers from NetScaler hosts (data exfil collection)
 
+```text
 \#event_simpleName = "NetworkConnectIP4"
 
 \| join(
@@ -58,6 +60,7 @@ include=\[ImageFileName,FileName,CommandLine,ParentBaseFileName\]
 
 \| table(\[ComputerName, RemoteAddressIP4, RemotePort, FileName, CommandLine\])
 
+```
 #### BPF — Capture inbound SAML authentication traffic on NetScaler SAML IDP interface
 
 sudo tcpdump -i eth0 -w /tmp/saml_inbound\_%Y%m%d\_%H%M%S.pcap -G 3600 -C 500 \\
@@ -72,24 +75,30 @@ sudo tcpdump -i eth0 -w /tmp/netscaler_extern\_%Y%m%d\_%H%M%S.pcap -G 1800 -C 20
 
 #### Datadog Log Search — Inbound HTTPS requests to SAML IDP endpoint with HTTP 200/500 responses
 
+```text
 source:citrix @url:\*/saml/\* (status:error OR @http.status_code:\[500 TO 599\]) -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
 
 // time range: 2026-02-23T00:00Z to current
 
+```
 #### Datadog Log Search — NetScaler application-level error events (memory/access violations)
 
+```text
 source:citrix message:("out-of-bounds" OR "memory read" OR "segfault" OR "core dump" OR "signal 11")
 
 // time range: 2026-02-23T00:00Z to current
 
 // Note: Requires NetScaler nslog or syslog forwarded to Datadog. If not forwarded, use source:syslog host:\<netscaler-hostname\> instead.
 
+```
 #### Datadog Live Process Monitoring (Infrastructure \> Processes — NOT a log source)
 
 command:ns user:root
 
+```text
 // Free text search: "nsaad" OR "nscollect" to identify anomalous NetScaler daemon activity
 
+```
 #### Windows Event IDs to collect (on Windows-based authentication infrastructure integrated with NetScaler SAML IDP)
 
 Event ID 4625: Failed logon (SAML assertion failures surfacing as authentication rejections)
@@ -100,20 +109,25 @@ Event ID 4648: Logon with explicit credentials (lateral movement after credentia
 
 Collection command:
 
+```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4625,4648,1102; StartTime=(Get-Date).AddDays(-30)} \|
 
 Select-Object TimeCreated, Id, Message \|
 
 Export-Csv -Path C:\hunt\saml_auth_events.csv -NoTypeInformation
 
+```
 #### YARA — File-system scan for SAML response capture tools or memory dump artifacts on NetScaler hosts
 
+```text
 yara -r /etc/yara/saml_exploit_artifacts.yar /var/nslog/ /tmp/ /var/tmp/ \>\> /tmp/yara_saml_hits.txt
 
+```
 ### Analysis Queries
 
 #### CrowdStrike Falcon FQL — Frequency analysis: source IPs generating anomalous SAML endpoint request bursts (rarity of request rates)
 
+```text
 \#event_simpleName = "NetworkReceiveAcceptIP4"
 
 \| RemotePort = "443"
@@ -122,8 +136,10 @@ yara -r /etc/yara/saml_exploit_artifacts.yar /var/nslog/ /tmp/ /var/tmp/ \>\> /t
 
 \| sort(\_count, order=desc, limit=100)
 
+```
 #### CrowdStrike Falcon FQL — Detect unexpected child process spawning from NetScaler daemons (post-exploitation)
 
+```text
 \#event_simpleName = "ProcessRollup2"
 
 \| ParentBaseFileName = /nsaad\|nsmgmt\|nsnetsvc\|ns/i
@@ -132,14 +148,17 @@ yara -r /etc/yara/saml_exploit_artifacts.yar /var/nslog/ /tmp/ /var/tmp/ \>\> /t
 
 \| table(\[ComputerName, ParentBaseFileName, FileName, CommandLine, AuthenticationId\])
 
+```
 #### Wireshark display filter — Identify malformed SAML AuthnRequest payloads or oversized SAML bodies
 
 http.request.method == "POST" && http.request.uri contains "/saml" && http.content_length \> 8192
 
+```bash
 tshark CLI equivalent:
 
 tshark -r /tmp/saml_inbound\_\*.pcap \\
 
+```
 -Y 'http.request.method == "POST" && http.request.uri contains "/saml" && http.content_length \> 8192' \\
 
 -T fields -e frame.time -e ip.src -e http.content_length -e http.request.uri \\
@@ -150,10 +169,12 @@ tshark -r /tmp/saml_inbound\_\*.pcap \\
 
 http.response.code == 200 && http.content_type contains "saml" && data.len \> 65536
 
+```bash
 tshark CLI equivalent:
 
 tshark -r /tmp/saml_inbound\_\*.pcap \\
 
+```
 -Y 'http.response.code == 200 && data.len \> 65536' \\
 
 -T fields -e frame.time -e ip.dst -e data.len \\
@@ -162,24 +183,31 @@ tshark -r /tmp/saml_inbound\_\*.pcap \\
 
 #### Datadog Log Analytics — Top external IPs by SAML endpoint request volume (Table view)
 
+```text
 source:citrix @url:\*/saml/\*
 
 // Table view; group by @network.client.ip; sort descending by count; time range: 2026-02-23T00:00Z to current
 
+```
 #### Datadog Log Analytics — Timeseries of NetScaler error rate spikes (potential exploit activity)
 
+```text
 source:citrix status:error
 
 // Timeseries view; group by @http.status_code; time range: 2026-02-23T00:00Z to current
 
+```
 #### Datadog Audit Trail — API key or integration changes coinciding with NetScaler anomalies
 
+```text
 source:datadog @evt.category:api_key_management @evt.name:created
 
 // Access via Datadog Admin \> Audit Trail; time range: 2026-02-23T00:00Z to current
 
+```
 #### Datadog Monitor — Alert on spike in NetScaler error responses from external IPs
 
+```text
 Type: Log Alert
 
 Query: source:citrix status:error -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
@@ -188,6 +216,7 @@ Evaluation window: last 5 minutes
 
 Alert condition: count \> 50
 
+```
 ***Message: "ALERT: Elevated NetScaler error rate from external source — potential CVE-2026-3055 exploitation attempt. Immediate investigation required. @security-oncall"***
 
 Prerequisites: NetScaler nslog or syslog must be forwarded to Datadog. Citrix integration or custom syslog pipeline required.
@@ -196,24 +225,30 @@ Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 
 #### PowerShell — Hunt for failed SAML-related authentication events on integrated Windows authentication servers
 
+```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4625; StartTime=(Get-Date).AddDays(-30)} \|
 
 Where-Object {\$\_.Message -match 'SAML\|Kerberos\|NTLM'} \|
 
 Select-Object TimeCreated, @{N='AccountName';E={\$\_.Properties\[5\].Value}},
 
+```
 @{N='FailureReason';E={\$\_.Properties\[8\].Value}},
 
 @{N='SourceIP';E={\$\_.Properties\[19\].Value}} \|
 
+```powershell
 Export-Csv -Path C:\hunt\failed_saml_auth.csv -NoTypeInformation
 
+```
 #### YARA — Memory scan for in-memory SAML exploit tooling on NetScaler host processes
 
+```text
 yara -p \$(pgrep nsaad) /etc/yara/saml_exploit_artifacts.yar
 
 // Note: CrowdStrike Falcon RTR can execute YARA remotely: RTR \> Run Script \> yara -p \<pid\> rules.yar
 
+```
 ## Hypothesis 2
 
 A threat actor has exploited CVE-2026-4368 to cause session confusion on a NetScaler gateway, enabling unauthorized access to an authenticated user session.
@@ -226,6 +261,7 @@ Lateral Movement \| T1563 — Remote Service Session Hijacking \| Race condition
 
 #### CrowdStrike Falcon FQL — Collect all authentication-related process events on NetScaler-adjacent hosts
 
+```text
 \#event_simpleName = "UserLogon"
 
 \| join(
@@ -240,8 +276,10 @@ include=\[ImageFileName,FileName,CommandLine,ParentBaseFileName,AuthenticationId
 
 \| table(\[ComputerName, UserName, AuthenticationId, FileName, CommandLine, ParentBaseFileName\])
 
+```
 #### CrowdStrike Falcon FQL — Collect session-related DNS queries from gateway-connected endpoints
 
+```text
 \#event_simpleName = "DnsRequest"
 
 \| DomainName = /netscaler\|citrix\|vpn\|gateway\|aaa/i
@@ -258,6 +296,7 @@ include=\[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName
 
 \| table(\[ComputerName, DomainName, IpAddress, RequestType, FileName, CommandLine\])
 
+```
 #### BPF — Capture gateway SSL VPN session establishment traffic
 
 sudo tcpdump -i eth0 -w /tmp/gateway_sessions\_%Y%m%d\_%H%M%S.pcap -G 1800 -C 500 \\
@@ -272,24 +311,30 @@ sudo tcpdump -i eth0 -w /tmp/dtls_sessions\_%Y%m%d\_%H%M%S.pcap -G 1800 -C 200 \
 
 #### Datadog Log Search — Session cookie reuse from multiple distinct IPs (session hijacking indicator)
 
+```text
 source:citrix @http.headers.cookie:\* -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
 
 // time range: 2026-02-23T00:00Z to current
 
 // Note: Requires Citrix access logs with cookie header logging enabled. If unavailable, use source:syslog host:\<netscaler-hostname\> message:("session" OR "cookie") as fallback.
 
+```
 #### Datadog Log Search — NetScaler AAA authentication events with unexpected session transitions
 
+```text
 source:citrix message:("session mixup" OR "session mismatch" OR "invalid session" OR "race" OR "concurrent session")
 
 // time range: 2026-02-23T00:00Z to current
 
+```
 #### Datadog Live Process Monitoring (Infrastructure \> Processes — NOT a log source)
 
 command:nsconmsg user:root
 
+```text
 // Identifies NetScaler connection message daemon activity; free text search: "nsvpnvserver" OR "nsaaa"
 
+```
 #### Windows Event IDs to collect (on downstream Windows systems accessed via NetScaler gateway)
 
 Event ID 4624: Successful logon (baseline session establishment from gateway source IPs)
@@ -302,32 +347,41 @@ Event ID 4768: Kerberos TGT requests (session initiation from gateway-connected 
 
 Collection command:
 
+```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4624,4634,4776,4768; StartTime=(Get-Date).AddDays(-30)} \|
 
 Select-Object TimeCreated, Id, @{N='Account';E={\$\_.Properties\[5\].Value}},
 
+```
 @{N='LogonType';E={\$\_.Properties\[8\].Value}},
 
 @{N='SourceIP';E={\$\_.Properties\[18\].Value}} \|
 
+```powershell
 Export-Csv -Path C:\hunt\gateway_logon_events.csv -NoTypeInformation
 
+```
 #### YARA — File-system scan for session token capture tools or proxy/interception software on NetScaler hosts
 
+```text
 yara -r /etc/yara/session_hijack_artifacts.yar /tmp/ /var/tmp/ /var/nslog/ \>\> /tmp/yara_session_hits.txt
 
+```
 ### Analysis Queries
 
 #### CrowdStrike Falcon FQL — Detect same session cookie or token used from multiple distinct source IPs (session mix-up indicator)
 
+```text
 \#event_simpleName = "NetworkReceiveAcceptIP4"
 
 \| groupBy(\[ComputerName, RemoteAddressIP4\], function=count(), limit=100000)
 
 \| sort(\_count, order=desc, limit=100)
 
+```
 #### CrowdStrike Falcon FQL — Identify short-duration session bursts (typical of race condition triggering)
 
+```text
 \#event_simpleName = "NetworkConnectIP4"
 
 \| RemotePort = "443"
@@ -336,30 +390,37 @@ yara -r /etc/yara/session_hijack_artifacts.yar /tmp/ /var/tmp/ /var/nslog/ \>\> 
 
 \| sort(\_count, order=desc, limit=50)
 
+```
 #### Wireshark display filter — Detect TLS session resumption anomalies (session ID reuse from multiple IPs)
 
 ssl.handshake.type == 2 && ssl.handshake.session_id_length \> 0
 
+```bash
 tshark CLI equivalent:
 
 tshark -r /tmp/gateway_sessions\_\*.pcap \\
 
+```
 -Y 'ssl.handshake.type == 2 && ssl.handshake.session_id_length \> 0' \\
 
 -T fields -e frame.time -e ip.src -e ssl.handshake.session_id \\
 
+```text
 \| sort -k3 \| uniq -d -f2 \\
 
+```
 \>\> /tmp/tls_session_reuse.txt
 
 #### Wireshark display filter — Detect concurrent active TLS sessions from the same session ID (session confusion)
 
 ssl.record.content_type == 23 && ip.src != ip.dst
 
+```bash
 tshark CLI equivalent:
 
 tshark -r /tmp/gateway_sessions\_\*.pcap \\
 
+```
 -Y 'ssl.record.content_type == 23' \\
 
 -T fields -e frame.time -e ip.src -e ip.dst -e ssl.record.length \\
@@ -368,30 +429,39 @@ tshark -r /tmp/gateway_sessions\_\*.pcap \\
 
 #### Datadog Log Analytics — Sessions per source IP over time (Table view for session distribution anomalies)
 
+```text
 source:citrix @http.headers.cookie:\*
 
 // Table view; group by @network.client.ip; time range: 2026-02-23T00:00Z to current
 
+```
 #### Datadog Log Analytics — Timeseries of authentication events (spike indicates race condition activity)
 
+```text
 source:citrix message:("session" OR "auth" OR "logon")
 
 // Timeseries view; group by @http.status_code; time range: 2026-02-23T00:00Z to current
 
+```
 #### Datadog CloudTrail — Detect API calls made from unexpected IPs following NetScaler session establishment
 
+```text
 source:cloudtrail @evt.name:(AssumeRole OR GetCredentials OR ListBuckets) -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
 
 // Analytics: Table view; group by @network.client.ip, @userIdentity.arn; time range: 2026-02-23T00:00Z to current
 
+```
 #### Datadog Audit Trail — Investigate user management changes occurring after anomalous gateway sessions
 
+```text
 source:datadog @evt.category:user_management @evt.name:user.login
 
 // Access via Datadog Admin \> Audit Trail; time range: 2026-02-23T00:00Z to current
 
+```
 #### Datadog Monitor — Alert on authentication session anomalies from gateway source IPs
 
+```text
 Type: Log Alert
 
 Query: source:citrix message:("session mixup" OR "invalid session" OR "race" OR "concurrent session")
@@ -402,6 +472,7 @@ Alert condition: count \> 0
 
 Message: "ALERT: Potential CVE-2026-4368 session confusion event detected on NetScaler gateway. Immediate session audit and investigation required. @security-oncall"
 
+```
 Prerequisites: NetScaler syslog with detailed session logging must be forwarded to Datadog. Enable verbose session logging via Citrix CLI before deploying this monitor.
 
 Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
@@ -410,12 +481,14 @@ Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 
 \$gatewayIPs = @("10.0.0.1","192.168.1.1") \# Replace with actual NetScaler gateway IPs
 
+```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4624; StartTime=(Get-Date).AddDays(-30)} \|
 
 Where-Object {\$\_.Properties\[18\].Value -in \$gatewayIPs} \|
 
 Select-Object TimeCreated,
 
+```
 @{N='Account';E={\$\_.Properties\[5\].Value}},
 
 @{N='LogonType';E={\$\_.Properties\[8\].Value}},
@@ -424,16 +497,20 @@ Select-Object TimeCreated,
 
 Group-Object Account \|
 
+```powershell
 Where-Object {(\$\_.Group \| Select-Object -ExpandProperty SourceIP \| Sort-Object -Unique).Count -gt 1} \|
 
 Export-Csv -Path C:\hunt\gateway_session_anomalies.csv -NoTypeInformation
 
+```
 #### YARA — Memory scan for session token injection tooling resident in NetScaler daemon processes
 
+```text
 yara -p \$(pgrep nsvpnd) /etc/yara/session_hijack_artifacts.yar
 
 // Note: CrowdStrike RTR can execute YARA on remote hosts via RTR \> Run Script
 
+```
 ## Hypothesis 3
 
 A threat actor is performing reconnaissance or exploitation staging against NetScaler management interfaces following initial memory leakage from CVE-2026-3055, using extracted credentials or session tokens to pivot to internal resources.
@@ -446,6 +523,7 @@ Lateral Movement \| T1021.001 — Remote Services: Remote Desktop Protocol \| Fo
 
 #### CrowdStrike Falcon FQL — Collect outbound RDP connections from hosts adjacent to NetScaler (lateral movement collection)
 
+```text
 \#event_simpleName = "NetworkConnectIP4"
 
 \| RemotePort = "3389"
@@ -462,14 +540,17 @@ include=\[ImageFileName,FileName,CommandLine,AuthenticationId,ParentBaseFileName
 
 \| table(\[ComputerName, RemoteAddressIP4, RemotePort, FileName, CommandLine, ParentBaseFileName\])
 
+```
 #### CrowdStrike Falcon FQL — Credential access: LSASS memory read attempts on hosts accessible via NetScaler
 
+```text
 \#event_simpleName = "ProcessRollup2"
 
 \| FileName = /mimikatz\|procdump\|rundll32\|comsvcs/i
 
 \| table(\[ComputerName, FileName, CommandLine, ParentBaseFileName, AuthenticationId\])
 
+```
 #### BPF — Capture RDP and WinRM lateral movement from NetScaler-adjacent segments
 
 sudo tcpdump -i eth1 -w /tmp/lateral_rdp\_%Y%m%d\_%H%M%S.pcap -G 1800 -C 200 \\
@@ -478,16 +559,20 @@ sudo tcpdump -i eth1 -w /tmp/lateral_rdp\_%Y%m%d\_%H%M%S.pcap -G 1800 -C 200 \\
 
 #### Datadog Log Search — Remote execution events on Windows hosts accessed via NetScaler gateway
 
+```text
 source:windows message:("psexec" OR "wmiexec" OR "winrm" OR "invoke-command" OR "New-PSSession")
 
 // time range: 2026-02-23T00:00Z to current
 
+```
 #### Datadog Live Process Monitoring (Infrastructure \> Processes — NOT a log source)
 
 command:mstsc user:administrator
 
+```text
 // Identify RDP client executions; free text: "psexec" OR "wmic" for lateral movement staging
 
+```
 #### Windows Event IDs to collect
 
 Event ID 4648: Logon with explicit credentials (pass-the-hash or harvested credential reuse)
@@ -500,20 +585,25 @@ Event ID 4698: Scheduled task created (persistence mechanism)
 
 Collection command:
 
+```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security','System','Microsoft-Windows-TaskScheduler/Operational'; Id=4648,4688,7045,4698; StartTime=(Get-Date).AddDays(-30)} \|
 
 Select-Object TimeCreated, Id, Message \|
 
 Export-Csv -Path C:\hunt\lateral_movement_events.csv -NoTypeInformation
 
+```
 #### YARA — File-system scan for lateral movement staging tools on hosts accessible via NetScaler gateway
 
+```text
 yara -r /etc/yara/credential_dump_tools.yar C:\Windows\Temp\\ C:\Users\Public\\ C:\ProgramData\\ \>\> C:\hunt\yara_lateral_hits.txt
 
+```
 ### Analysis Queries
 
 #### CrowdStrike Falcon FQL — Rarity analysis: hosts with first-time RDP connections from NetScaler gateway IPs
 
+```text
 \#event_simpleName = "NetworkConnectIP4"
 
 \| RemotePort = "3389"
@@ -522,22 +612,27 @@ yara -r /etc/yara/credential_dump_tools.yar C:\Windows\Temp\\ C:\Users\Public\\ 
 
 \| sort(\_count, order=asc, limit=50)
 
+```
 #### CrowdStrike Falcon FQL — Timeline correlation: credential access tools launched within 10 minutes of NetScaler authentication events
 
+```text
 \#event_simpleName = "ProcessRollup2"
 
 \| FileName = /mimikatz\|procdump\|lsass\|comsvcs/i
 
 \| table(\[ComputerName, FileName, CommandLine, ParentBaseFileName, ContextTimeStamp\])
 
+```
 #### Wireshark display filter — Detect RDP authentication with NTLM (indicative of harvested credential reuse)
 
 rdp.negotiation_request_flags && ntlmssp.auth.username
 
+```bash
 tshark CLI equivalent:
 
 tshark -r /tmp/lateral_rdp\_\*.pcap \\
 
+```
 -Y 'ntlmssp.auth.username' \\
 
 -T fields -e frame.time -e ip.src -e ip.dst -e ntlmssp.auth.username \\
@@ -548,32 +643,41 @@ tshark -r /tmp/lateral_rdp\_\*.pcap \\
 
 ntlmssp.messagetype == 3 && ip.src == ip.dst
 
+```bash
 tshark CLI equivalent:
 
 tshark -r /tmp/lateral_rdp\_\*.pcap \\
 
+```
 -Y 'ntlmssp.messagetype == 3' \\
 
 -T fields -e frame.time -e ip.src -e ntlmssp.auth.username -e ntlmssp.auth.domain \\
 
+```text
 \| sort -k3 \| uniq -d -f2 \\
 
+```
 \>\> /tmp/ntlm_relay_candidates.txt
 
 #### Datadog Log Analytics — Top accounts used for RDP or WinRM access from gateway IPs
 
+```text
 source:windows message:("4648" OR "explicit credentials")
 
 // Table view; group by @usr.name; time range: 2026-02-23T00:00Z to current
 
+```
 #### Datadog CloudTrail — Cloud API access from IPs matching NetScaler gateway external addresses
 
+```text
 source:cloudtrail @evt.name:(AssumeRole OR ConsoleLogin OR CreateAccessKey) -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
 
 // Analytics: Table view; group by @network.client.ip, @userIdentity.arn; time range: 2026-02-23T00:00Z to current
 
+```
 #### Datadog Monitor — Alert on credential dump tool execution on gateway-adjacent hosts
 
+```text
 Type: Log Alert
 
 Query: source:windows message:("mimikatz" OR "procdump" OR "comsvcs" OR "MiniDump" OR "sekurlsa")
@@ -582,6 +686,7 @@ Evaluation window: last 5 minutes
 
 Alert condition: count \> 0
 
+```
 ***Message: "ALERT: Credential dump tool activity detected on host — potential post-exploitation following NetScaler CVE-2026-3055 exploitation. Immediate IR engagement required. @security-oncall"***
 
 Prerequisites: Windows Security event logs (Event ID 4688 with command line logging) must be forwarded to Datadog. PowerShell Script Block Logging (Event ID 4104) forwarding recommended.
@@ -590,12 +695,14 @@ Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 
 #### PowerShell — Hunt for lateral movement from gateway-adjacent hosts using pass-the-hash indicators
 
+```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4648; StartTime=(Get-Date).AddDays(-30)} \|
 
 Where-Object {\$\_.Properties\[12\].Value -match '^(10\\\|172\\1\[6-9\]\\\|172\\2\[0-9\]\\\|172\\3\[01\]\\\|192\\168\\)' -eq \$false} \|
 
 Select-Object TimeCreated,
 
+```
 @{N='SubjectAccount';E={\$\_.Properties\[1\].Value}},
 
 @{N='TargetAccount';E={\$\_.Properties\[5\].Value}},
@@ -604,12 +711,16 @@ Select-Object TimeCreated,
 
 @{N='SourceIP';E={\$\_.Properties\[12\].Value}} \|
 
+```powershell
 Export-Csv -Path C:\hunt\explicit_cred_logons.csv -NoTypeInformation
 
+```
 #### YARA — Memory scan for Mimikatz or credential theft tooling in active processes
 
+```powershell
 Get-Process \| ForEach-Object {
 
+```
 \$pid = \$\_.Id
 
 & yara C:\yara_rules\Credential_Dump_Tool_Memory_Artifacts.yar -p \$pid 2\>\$null \|
@@ -618,8 +729,10 @@ ForEach-Object { Write-Output "PID \$pid: \$\_" }
 
 } \| Out-File C:\hunt\yara_cred_memory.txt
 
+```text
 // Note: CrowdStrike RTR can execute YARA on remote hosts: RTR \> Run Script \> yara -p \<pid\> rules.yar
 
+```
 ## Hypothesis 4
 
 An automated scanning infrastructure or exploit framework has enumerated NetScaler SAML IDP and gateway endpoints at scale, generating anomalous authentication request volumes that are distinguishable from legitimate traffic patterns.
@@ -632,6 +745,7 @@ Reconnaissance \| T1595.002 — Active Scanning: Vulnerability Scanning \| Autom
 
 #### CrowdStrike Falcon FQL — High-frequency inbound connection collection for NetScaler hosts
 
+```text
 \#event_simpleName = "NetworkReceiveAcceptIP4"
 
 \| RemotePort = "443"
@@ -640,6 +754,7 @@ Reconnaissance \| T1595.002 — Active Scanning: Vulnerability Scanning \| Autom
 
 \| sort(\_count, order=desc, limit=100)
 
+```
 #### BPF — Rate-capture for SYN flood or connection burst detection
 
 sudo tcpdump -i eth0 -w /tmp/scan_detection\_%Y%m%d\_%H%M%S.pcap -G 600 -C 100 \\
@@ -648,18 +763,22 @@ sudo tcpdump -i eth0 -w /tmp/scan_detection\_%Y%m%d\_%H%M%S.pcap -G 600 -C 100 \
 
 #### Datadog Log Search — High-frequency SAML endpoint requests by source IP (scanner fingerprint)
 
+```text
 source:citrix @url:\*/saml/\* -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
 
 // time range: 2026-02-23T00:00Z to current
 
 // Note: Requires Citrix access logs forwarded to Datadog. Data source gap: if Citrix logs are not forwarded, use WAF or firewall logs as fallback: source:firewall @destination.port:443.
 
+```
 #### Datadog Live Process Monitoring (Infrastructure \> Processes — NOT a log source)
 
 command:nshttp user:root
 
+```text
 // Identify NetScaler HTTP processing daemon activity during suspected scan windows
 
+```
 #### Windows Event IDs to collect (perimeter firewall / WAF Windows-based management)
 
 Event ID 5156: Windows Filtering Platform connection permitted (high-volume inbound to NetScaler)
@@ -668,40 +787,50 @@ Event ID 5157: Windows Filtering Platform connection blocked (scan traffic block
 
 Collection command:
 
+```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156,5157; StartTime=(Get-Date).AddDays(-7)} \|
 
 Where-Object {\$\_.Properties\[5\].Value -eq '443'} \|
 
 Select-Object TimeCreated, @{N='SourceIP';E={\$\_.Properties\[3\].Value}},
 
+```
 @{N='DestPort';E={\$\_.Properties\[5\].Value}},
 
 @{N='Direction';E={\$\_.Properties\[7\].Value}} \|
 
+```powershell
 Export-Csv -Path C:\hunt\netscaler_firewall_events.csv -NoTypeInformation
 
+```
 #### YARA — Scan for exploit framework staging files (e.g., Metasploit modules, nuclei templates) on NetScaler hosts
 
+```text
 yara -r /etc/yara/exploit_framework_artifacts.yar /tmp/ /var/tmp/ /root/ \>\> /tmp/yara_scanner_hits.txt
 
+```
 ### Analysis Queries
 
 #### CrowdStrike Falcon FQL — Top source IPs by inbound connection count to NetScaler (most active scanners)
 
+```text
 \#event_simpleName = "NetworkReceiveAcceptIP4"
 
 \| RemotePort = "443"
 
 \| top(\[RemoteAddressIP4, ComputerName\], limit=50)
 
+```
 #### Wireshark display filter — Detect HTTP user-agents associated with vulnerability scanners and exploit frameworks
 
 http.user_agent matches "(nuclei\|nmap\|masscan\|shodan\|zgrab\|dirbuster\|nikto\|metasploit\|python-requests/2\|Go-http-client)"
 
+```bash
 tshark CLI equivalent:
 
 tshark -r /tmp/scan_detection\_\*.pcap \\
 
+```
 -Y 'http.user_agent matches "(nuclei\|nmap\|masscan\|shodan\|zgrab\|dirbuster\|nikto\|metasploit\|python-requests/2\|Go-http-client)"' \\
 
 -T fields -e frame.time -e ip.src -e http.user_agent -e http.request.uri \\
@@ -710,12 +839,15 @@ tshark -r /tmp/scan_detection\_\*.pcap \\
 
 #### Datadog Log Analytics — Timeseries of inbound SAML request volume (spike detection for exploit waves)
 
+```text
 source:citrix @url:\*/saml/\*
 
 // Timeseries view; group by @network.client.ip; time range: 2026-02-23T00:00Z to current
 
+```
 #### Datadog Monitor — Alert on scanner-level request volumes to NetScaler SAML endpoint
 
+```text
 Type: Log Alert
 
 Query: source:citrix @url:\*/saml/\* -@network.client.ip:10.\* -@network.client.ip:172.16.\* -@network.client.ip:192.168.\*
@@ -724,6 +856,7 @@ Evaluation window: last 1 minute
 
 Alert condition: count \> 200
 
+```
 ***Message: "ALERT: Anomalous SAML endpoint request volume detected — potential CVE-2026-3055 scanning or exploitation. Block source IPs at perimeter and initiate investigation. @security-oncall"***
 
 Prerequisites: Citrix access logs or WAF logs must be forwarded to Datadog with @url field populated.
@@ -732,24 +865,30 @@ Create via: Monitors \> New Monitor \> Log Alert OR POST /api/v1/monitors
 
 #### PowerShell — Identify source IPs generating high-volume firewall connection events to NetScaler
 
+```powershell
 Get-WinEvent -FilterHashtable @{LogName='Security'; Id=5156; StartTime=(Get-Date).AddDays(-7)} \|
 
 Where-Object {\$\_.Properties\[5\].Value -eq '443'} \|
 
+```
 Group-Object {\$\_.Properties\[3\].Value} \|
 
 Sort-Object Count -Descending \|
 
+```powershell
 Select-Object -First 50 Name, Count \|
 
 Export-Csv -Path C:\hunt\top_source_ips.csv -NoTypeInformation
 
+```
 #### YARA — Memory scan for scanner or exploit framework tooling on NetScaler and adjacent hosts
 
+```text
 yara -p \$(pgrep -f "python\|ruby\|go") /etc/yara/exploit_framework_artifacts.yar
 
 // Note: CrowdStrike RTR can execute YARA on remote hosts; enumerate process IDs first via RTR \> Run Script \> ps aux
 
+```
 # Threat Actor Profile
 
 The primary threat actors likely to exploit CVE-2026-3055 and CVE-2026-4368 fall into three categories based on historical NetScaler exploitation patterns.
@@ -776,10 +915,12 @@ Cloud: CloudTrail logs (if cloud infrastructure is accessed via NetScaler gatewa
 
 This rule detects processes spawning shells or download utilities from NetScaler daemon parent processes, which would indicate post-exploitation command execution on a compromised NetScaler appliance. The OR condition covers both UNIX-like shell spawning (sh, bash) and common attacker download tools (curl, wget, python). The grandparent filter suppresses legitimate package management activity.
 
+```yara
 rule NetScaler_Post_Exploitation_Shell_Spawn
 
 {
 
+```
 meta:
 
 description = "Detects shell or download tool spawned from NetScaler daemon processes — potential post-exploitation"
@@ -816,14 +957,18 @@ condition:
 
 any of (\$daemon\*) and any of (\$shell\*, \$tool\*)
 
+```text
 }
 
+```
 This rule targets memory artifacts from common credential dumping tools known to be used in post-NetScaler-exploitation lateral movement chains. The condition branches independently check for Mimikatz, WCE, gsecdump, and comsvcs MiniDump patterns, with a catch-all branch for memory-read API strings co-occurring with lsass. The rule requires SeDebugPrivilege-level process access to execute YARA against LSASS; use CrowdStrike RTR for remote execution. Note: This rule targets Windows LSASS tooling and will not match Linux-specific credential dumping (T1003.007). In environments with Linux runner pools or containers, include a separate Linux YARA rule (see below).
 
+```yara
 rule Credential_Dump_Tool_Memory_Artifacts
 
 {
 
+```
 meta:
 
 description = "Detects in-memory artifacts from credential dumping tools used in post-NetScaler exploitation lateral movement"
@@ -838,8 +983,10 @@ hash = "N/A"
 
 strings:
 
+```text
 // Branch 1: Mimikatz
 
+```
 \$mimi1 = "sekurlsa::logonpasswords" ascii wide nocase
 
 \$mimi2 = "lsadump::sam" ascii wide nocase
@@ -850,24 +997,32 @@ strings:
 
 \$mimi5 = { 6D 69 6D 69 6B 61 74 7A }
 
+```text
 // Branch 2: WCE (Windows Credential Editor)
 
+```
 \$wce1 = "wce.exe" ascii wide nocase
 
 \$wce2 = "lsass.exe" ascii wide nocase
 
+```text
 // Branch 3: gsecdump
 
+```
 \$gsec1 = "gsecdump" ascii wide nocase
 
+```text
 // Branch 4: comsvcs MiniDump
 
+```
 \$comsvc1 = "MiniDump" ascii wide
 
 \$comsvc2 = "comsvcs" ascii wide nocase
 
+```text
 // Catch-all: memory-read API + lsass indicator
 
+```
 \$memapi1 = "NtReadVirtualMemory" ascii wide
 
 \$memapi2 = "ReadProcessMemory" ascii wide
@@ -886,14 +1041,18 @@ any of (\$mimi\*) or
 
 (any of (\$memapi\*) and \$lsass and any of (\$mimi\*, \$wce\*, \$gsec\*, \$comsvc\*))
 
+```text
 }
 
+```
 This rule detects SAML AuthnRequest payloads that contain binary non-XML content or exhibit structural anomalies consistent with out-of-bounds read exploitation of CVE-2026-3055. The oversized SAML element condition (greater than 8KB for a single SAML element) and binary content co-occurrence filter are designed to reduce false positives from legitimate large SAML assertions while flagging exploit payloads. The wide modifier covers UTF-16 encoded variants.
 
+```yara
 rule NetScaler_CVE_2026_3055_SAML_Exploit_Payload
 
 {
 
+```
 meta:
 
 description = "Detects malformed SAML request payloads consistent with CVE-2026-3055 out-of-bounds read exploitation against NetScaler SAML IDP"
@@ -914,30 +1073,40 @@ strings:
 
 \$saml_idp = "samlIdPProfile" ascii wide nocase
 
+```text
 // Binary content in SAML payload (non-printable bytes following SAML XML markers)
 
+```
 \$bin_marker = { 3C 73 61 6D 6C 70 \[0-512\] 00 00 00 00 }
 
+```text
 // Oversized NameID or Attribute element
 
+```
 \$oversize = { 3C 4E 61 6D 65 49 44 \[1-8200\] 3C 2F 4E 61 6D 65 49 44 3E }
 
 condition:
 
 (\$saml_req or \$saml_auth or \$saml_idp) and (\$bin_marker or \$oversize)
 
+```text
 }
 
+```
 Scan command (PCAP-based, run against captured network traffic):
 
+```text
 yara -r /etc/yara/NetScaler_CVE_2026_3055_SAML_Exploit_Payload.yar /tmp/saml_inbound\_\*.pcap \>\> /tmp/yara_saml_exploit.txt
 
+```
 ***This rule detects exploit framework artifacts — specifically Nuclei templates and Metasploit module file structures — that may be staged on attacker-controlled hosts or found on NetScaler appliances following compromise. The OR structure independently detects the three most common exploit framework file signatures without requiring all to be present simultaneously.***
 
+```yara
 rule Exploit_Framework_NetScaler_CVE_2026_3055_Template
 
 {
 
+```
 meta:
 
 description = "Detects Nuclei, Metasploit, or custom exploit templates targeting CVE-2026-3055 or CVE-2026-4368"
@@ -952,8 +1121,10 @@ hash = "N/A"
 
 strings:
 
+```text
 // Nuclei template markers for NetScaler SAML IDP targeting
 
+```
 \$nuclei1 = "CVE-2026-3055" ascii wide nocase
 
 \$nuclei2 = "samlIdPProfile" ascii wide nocase
@@ -962,16 +1133,20 @@ strings:
 
 \$nuclei4 = "id: cve-2026-3055" ascii wide nocase
 
+```text
 // Metasploit module structure for NetScaler exploit
 
+```
 \$msf1 = "Msf::Exploit::Remote" ascii wide
 
 \$msf2 = "NetScaler" ascii wide nocase
 
 \$msf3 = "CVE-2026-3055" ascii wide nocase
 
+```text
 // Generic exploit script markers
 
+```
 \$script1 = "samlIdPProfile" ascii wide nocase
 
 \$script2 = "out-of-bounds" ascii wide nocase
@@ -988,14 +1163,19 @@ condition:
 
 (2 of (\$script\*) and \$nuclei3)
 
+```text
 }
 
+```
 Scan command:
 
+```text
 yara -r /etc/yara/Exploit_Framework_NetScaler_CVE_2026_3055_Template.yar /tmp/ /var/tmp/ /root/ /home/ \>\> /tmp/yara_exploitframework_hits.txt
 
+```
 SIGMA Rules
 
+```yaml
 title: NetScaler SAML IDP Unauthenticated Memory Read Exploit Attempt
 
 id: 4a7f8b2d-1e3c-4a5f-8b2d-1e3c4a5f8b2d
@@ -1006,32 +1186,39 @@ description: Detects HTTP POST requests to NetScaler SAML IDP endpoints with ano
 
 references:
 
+```
 \- https://support.citrix.com/support-home/kbsearch/article?articleNumber=CTX696300
 
 \- https://nvd.nist.gov/vuln/detail/CVE-2026-3055
 
+```yaml
 author: 1898 & Co. Threat Intelligence
 
 date: 2026-03-25
 
 tags:
 
+```
 \- attack.initial_access
 
 \- attack.t1190
 
 \- cve.2026-3055
 
+```yaml
 logsource:
 
+```
 category: webserver
 
 product: citrix_netscaler
 
+```yaml
 detection:
 
 selection:
 
+```
 cs-method: POST
 
 cs-uri-stem\|contains: '/saml'
@@ -1048,14 +1235,17 @@ c-ip\|cidr:
 
 \- '192.168.0.0/16'
 
+```text
 condition: selection and not filter_legitimate
 
 falsepositives:
 
+```
 \- Legitimate large SAML federation responses from trusted IdP partners
 
 \- Certificate-heavy SAML assertions from enterprise IdPs with large attribute sets
 
+```yaml
 level: high
 
 title: NetScaler Process Spawning Unexpected Child Process
@@ -1068,28 +1258,35 @@ description: Detects NetScaler daemon processes spawning unexpected child proces
 
 references:
 
+```
 \- https://nvd.nist.gov/vuln/detail/CVE-2026-3055
 
+```yaml
 author: 1898 & Co. Threat Intelligence
 
 date: 2026-03-25
 
 tags:
 
+```
 \- attack.execution
 
 \- attack.t1059.004
 
 \- cve.2026-3055
 
+```yaml
 logsource:
 
+```
 category: process_creation
 
 product: linux
 
+```yaml
 detection:
 
+```
 selection_parent:
 
 ParentImage\|contains:
@@ -1120,14 +1317,17 @@ Image\|endswith:
 
 \- '/nc'
 
+```text
 condition: selection_parent and selection_child
 
 falsepositives:
 
+```
 \- Legitimate Citrix maintenance scripts running under NetScaler daemon context
 
 \- Authorized administrative shell sessions initiated by NetScaler management tooling
 
+```yaml
 level: critical
 
 title: Credential Dump Tool Execution on Windows Host Post-NetScaler Access
@@ -1140,30 +1340,37 @@ description: Detects execution of credential dumping tools on Windows hosts acce
 
 references:
 
+```
 \- https://nvd.nist.gov/vuln/detail/CVE-2026-3055
 
+```yaml
 author: 1898 & Co. Threat Intelligence
 
 date: 2026-03-25
 
 tags:
 
+```
 \- attack.credential_access
 
 \- attack.t1003.001
 
 \- cve.2026-3055
 
+```yaml
 logsource:
 
+```
 category: process_creation
 
 product: windows
 
+```yaml
 detection:
 
 selection:
 
+```
 Image\|endswith:
 
 \- '\mimikatz.exe'
@@ -1192,22 +1399,28 @@ CommandLine\|contains\|all:
 
 \- 'lsass'
 
+```text
 condition: selection or selection_comsvcs
 
 falsepositives:
 
+```
 \- Authorized red team exercises with prior written approval
 
 \- Legitimate forensic investigation using approved tools
 
+```yaml
 level: critical
 
+```
 #### Snort/Suricata Rules
 
+```text
 alert tcp any any -\> \$HTTP_SERVERS 443 (msg:"CVE-2026-3055 NetScaler SAML IDP Exploit Attempt - Oversized POST to SAML Endpoint"; flow:to_server,established; content:"POST"; http_method; content:"/saml"; http_uri; dsize:\>8192; classtype:web-application-attack; sid:9000001; rev:1; reference:cve,2026-3055; metadata:affected_product NetScaler_ADC_Gateway, attack_target Web_Server, created_at 2026-03-25, signature_severity Major;)
 
 alert tcp \$EXTERNAL_NET any -\> \$HTTP_SERVERS 443 (msg:"CVE-2026-3055 NetScaler SAML IDP - Scanner/Exploit Framework User-Agent"; flow:to_server,established; content:"samlIdPProfile"; nocase; pcre:"/User-Agent\s\*:\s\*(nuclei\|nmap\|zgrab\|masscan\|go-http-client\|python-requests)/i"; threshold:type both, track by_src, count 5, seconds 60; classtype:attempted-recon; sid:9000002; rev:1; reference:cve,2026-3055; metadata:affected_product NetScaler_ADC_Gateway, attack_target Web_Server, created_at 2026-03-25, signature_severity Major;)
 
+```
 6. Indicators of Compromise
 
 Network IoCs: None published in source material — monitor Citrix CTX696300 security bulletin and CISA Known Exploited Vulnerabilities catalog (https://www.cisa.gov/known-exploited-vulnerabilities-catalog) for threat actor infrastructure IoCs as exploitation activity is confirmed and attributed.
