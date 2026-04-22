@@ -724,45 +724,26 @@ This rule targets file-system and disk artifacts associated with CVE-2025-49844 
 
 ```text
 rule Redis_Lua_RCE_Artifacts {
-```
-
 meta:
-
 description = "Detects file artifacts associated with CVE-2025-49844 RediShell Redis Lua use-after-free RCE and CVE-2025-46817 integer overflow exploitation"
-
 author = "1898 & Co."
-
 date = "2026-03-27"
-
 reference = "https://nvd.nist.gov/vuln/detail/CVE-2025-49844"
-
 strings:
-
-\$rce_1 = "RediShell" ascii nocase
-
-\$rce_2 = "redis_exploit" ascii nocase
-
-\$rce_3 = "CVE-2025-49844" ascii
-
-\$lua_gc_1 = "collectgarbage" ascii
-
-\$lua_gc_2 = "debug.getupvalue" ascii
-
-\$lua_gc_3 = "debug.setupvalue" ascii
-
-\$lua_eval = { 45 56 41 4C 20 22 }
-
-\$shell_1 = "os.execute" ascii
-
-\$shell_2 = "io.popen" ascii
-
-\$shell_3 = "dofile" ascii
-
+$rce_1 = "RediShell" ascii nocase
+$rce_2 = "redis_exploit" ascii nocase
+$rce_3 = "CVE-2025-49844" ascii
+$lua_gc_1 = "collectgarbage" ascii
+$lua_gc_2 = "debug.getupvalue" ascii
+$lua_gc_3 = "debug.setupvalue" ascii
+$lua_eval = { 45 56 41 4C 20 22 }
+$shell_1 = "os.execute" ascii
+$shell_2 = "io.popen" ascii
+$shell_3 = "dofile" ascii
 condition:
-
-any of (\$rce\_\*) or ((2 of (\$lua_gc\_\*)) and (any of (\$shell\_\*)))
-
+any of ($rce_\*) or ((2 of ($lua_gc_\*)) and (any of ($shell_\*)))
 }
+```
 
 **YARA Explanation:**
 
@@ -770,41 +751,24 @@ any of (\$rce\_\*) or ((2 of (\$lua_gc\_\*)) and (any of (\$shell\_\*)))
 
 ```text
 rule Redis_Lua_Memory_Exploitation {
-```
-
 meta:
-
 description = "Detects in-memory indicators of active Redis Lua engine exploitation (CVE-2025-49844/CVE-2025-46817) in Redis server process memory"
-
 author = "1898 & Co."
-
 date = "2026-03-27"
-
 reference = "https://nvd.nist.gov/vuln/detail/CVE-2025-49844"
-
 strings:
-
-\$mem_1 = "EVAL" ascii
-
-\$mem_2 = "collectgarbage" ascii
-
-\$mem_3 = "debug.getupvalue" ascii
-
-\$mem_4 = { 6C 6F 61 64 73 74 72 69 6E 67 }
-
-\$mem_5 = "pcall" ascii
-
-\$shell_1 = "os.execute" ascii
-
-\$shell_2 = "io.popen" ascii
-
-\$shell_3 = "dofile" ascii
-
+$mem_1 = "EVAL" ascii
+$mem_2 = "collectgarbage" ascii
+$mem_3 = "debug.getupvalue" ascii
+$mem_4 = { 6C 6F 61 64 73 74 72 69 6E 67 }
+$mem_5 = "pcall" ascii
+$shell_1 = "os.execute" ascii
+$shell_2 = "io.popen" ascii
+$shell_3 = "dofile" ascii
 condition:
-
-(2 of (\$mem\_\*)) and (any of (\$shell\_\*))
-
+(2 of ($mem_\*)) and (any of ($shell_\*))
 }
+```
 
 **YARA Explanation:**
 
@@ -812,57 +776,32 @@ condition:
 
 ```text
 rule Credential_Dump_Tool_Memory_Artifacts {
-```
-
 meta:
-
 description = "Detects Windows credential dumping tool artifacts (mimikatz, WCE, gsecdump, comsvcs MiniDump) in process memory; Windows hosts only"
-
 author = "1898 & Co."
-
 date = "2026-03-27"
-
 reference = "https://attack.mitre.org/techniques/T1003/"
-
 strings:
-
-\$mimi_1 = "sekurlsa::logonpasswords" ascii nocase
-
-\$mimi_2 = "lsadump::sam" ascii nocase
-
-\$mimi_3 = "privilege::debug" ascii nocase
-
-\$mimi_4 = "mimikatz" ascii nocase
-
-\$mimi_hex = { 6D 69 6D 69 6B 61 74 7A }
-
-\$wce_tool = "wce.exe" ascii nocase
-
-\$lsass = "lsass.exe" ascii nocase
-
-\$gsec = "gsecdump" ascii nocase
-
-\$comsvcs_1 = "MiniDump" ascii nocase
-
-\$comsvcs_2 = "comsvcs" ascii nocase
-
-\$api_1 = "NtReadVirtualMemory" ascii
-
-\$api_2 = "ReadProcessMemory" ascii
-
+$mimi_1 = "sekurlsa::logonpasswords" ascii nocase
+$mimi_2 = "lsadump::sam" ascii nocase
+$mimi_3 = "privilege::debug" ascii nocase
+$mimi_4 = "mimikatz" ascii nocase
+$mimi_hex = { 6D 69 6D 69 6B 61 74 7A }
+$wce_tool = "wce.exe" ascii nocase
+$lsass = "lsass.exe" ascii nocase
+$gsec = "gsecdump" ascii nocase
+$comsvcs_1 = "MiniDump" ascii nocase
+$comsvcs_2 = "comsvcs" ascii nocase
+$api_1 = "NtReadVirtualMemory" ascii
+$api_2 = "ReadProcessMemory" ascii
 condition:
-
-(any of (\$mimi_1, \$mimi_2, \$mimi_3, \$mimi_4, \$mimi_hex)) or
-
-(\$wce_tool and \$lsass) or
-
-(\$gsec) or
-
-(\$comsvcs_1 and \$comsvcs_2 and \$lsass) or
-
-((any of (\$api\_\*)) and \$lsass and (any of (\$mimi_4, \$mimi_hex, \$wce_tool, \$gsec)))
-
+(any of ($mimi_1, $mimi_2, $mimi_3, $mimi_4, $mimi_hex)) or
+($wce_tool and $lsass) or
+($gsec) or
+($comsvcs_1 and $comsvcs_2 and $lsass) or
+((any of ($api_\*)) and $lsass and (any of ($mimi_4, $mimi_hex, $wce_tool, $gsec)))
 }
+```
 
 # Indicators of Compromise
 

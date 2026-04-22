@@ -445,57 +445,32 @@ This rule targets file-system artifacts left by network packet capture tools tha
 
 ```text
 rule BACnet_Capture_Tool_Artifacts {
-```
-
 meta:
-
 description = "Detects file-system artifacts of network packet capture tools used for cleartext BACnet traffic sniffing (CVE-2026-24060)"
-
 author = "1898 & Co."
-
 date = "2026-03-24"
-
 reference = "https://www.cisa.gov/news-events/ics-advisories/icsa-26-078-08"
-
 strings:
-
-\$s1 = "Wireshark" ascii wide nocase
-
-\$s2 = "dumpcap.exe" ascii wide nocase
-
-\$s3 = "tshark.exe" ascii wide nocase
-
-\$s4 = "WinDump" ascii wide nocase
-
-\$s5 = "windump.exe" ascii wide nocase
-
-\$s6 = "NetworkMiner" ascii wide nocase
-
-\$s7 = "NetworkMiner.exe" ascii wide nocase
-
-\$s8 = "NPCAP" ascii wide nocase
-
-\$s9 = "\\Device\\NPF\_" ascii wide
-
-\$h1 = { BA C0 }
-
+$s1 = "Wireshark" ascii wide nocase
+$s2 = "dumpcap.exe" ascii wide nocase
+$s3 = "tshark.exe" ascii wide nocase
+$s4 = "WinDump" ascii wide nocase
+$s5 = "windump.exe" ascii wide nocase
+$s6 = "NetworkMiner" ascii wide nocase
+$s7 = "NetworkMiner.exe" ascii wide nocase
+$s8 = "NPCAP" ascii wide nocase
+$s9 = "\\Device\\NPF_" ascii wide
+$h1 = { BA C0 }
 condition:
-
 filesize \< 100MB and (
-
-(any of (\$s1,\$s2,\$s3)) or
-
-(any of (\$s4,\$s5)) or
-
-(any of (\$s6,\$s7)) or
-
-(\$s8 and \$h1) or
-
-(\$s9 and \$h1)
-
+(any of ($s1,$s2,$s3)) or
+(any of ($s4,$s5)) or
+(any of ($s6,$s7)) or
+($s8 and $h1) or
+($s9 and $h1)
 )
-
 }
+```
 
 #### File scan command
 
@@ -509,57 +484,32 @@ This rule targets in-memory indicators of tools used to craft and inject spoofed
 
 ```text
 rule BACnet_Spoofing_Impersonation_Memory {
-```
-
 meta:
-
 description = "Detects in-memory indicators of BACnet packet crafting or port-binding impersonation tools (CVE-2026-32666, CVE-2026-25086)"
-
 author = "1898 & Co."
-
 date = "2026-03-24"
-
 reference = "https://www.cisa.gov/news-events/ics-advisories/icsa-26-078-08"
-
 strings:
-
-\$b1 = { 81 0B }
-
-\$b2 = { 81 0A }
-
-\$h1 = { BA C0 }
-
-\$s1 = "SOCK_RAW" ascii wide nocase
-
-\$s2 = "sendto" ascii wide nocase
-
-\$s3 = "WSASendTo" ascii wide nocase
-
-\$s4 = "bind(" ascii wide nocase
-
-\$s5 = "SO_REUSEADDR" ascii wide nocase
-
-\$s6 = "SO_EXCLUSIVEADDRUSE" ascii wide nocase
-
-\$l1 = "BACnet-stack" ascii wide nocase
-
-\$l2 = "bacnet4j" ascii wide nocase
-
-\$l3 = "yabe" ascii wide nocase
-
+$b1 = { 81 0B }
+$b2 = { 81 0A }
+$h1 = { BA C0 }
+$s1 = "SOCK_RAW" ascii wide nocase
+$s2 = "sendto" ascii wide nocase
+$s3 = "WSASendTo" ascii wide nocase
+$s4 = "bind(" ascii wide nocase
+$s5 = "SO_REUSEADDR" ascii wide nocase
+$s6 = "SO_EXCLUSIVEADDRUSE" ascii wide nocase
+$l1 = "BACnet-stack" ascii wide nocase
+$l2 = "bacnet4j" ascii wide nocase
+$l3 = "yabe" ascii wide nocase
 condition:
-
-\$h1 and (
-
-((\$b1 or \$b2) and any of (\$s1,\$s2,\$s3)) or
-
-(any of (\$s4,\$s5,\$s6)) or
-
-any of (\$l1,\$l2,\$l3)
-
+$h1 and (
+(($b1 or $b2) and any of ($s1,$s2,$s3)) or
+(any of ($s4,$s5,$s6)) or
+any of ($l1,$l2,$l3)
 )
-
 }
+```
 
 #### Memory scan command
 

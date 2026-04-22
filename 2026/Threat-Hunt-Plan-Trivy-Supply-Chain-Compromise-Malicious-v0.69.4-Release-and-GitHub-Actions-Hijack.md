@@ -773,23 +773,14 @@ Snort/Suricata rule detecting HTTPS connection attempts to the TeamPCP primary C
 
 ```text
 alert tls any any -\> 45.148.10.212 443 (
-
 msg:"TeamPCP C2 TLS Connection to scan.aquasecurtiy.org - Supply Chain Attack C2";
-
 tls.sni; content:"aquasecurtiy"; nocase;
-
 flow:established,to_server;
-
 threshold:type limit, track by_src, count 1, seconds 60;
-
 classtype:trojan-activity;
-
 sid:9001001; rev:1;
-
 reference:url,stepsecurity.io/blog/trivy-compromised-a-second-time---malicious-v0-69-4-release;
-
 metadata:affected_product GitHub_Actions, attack_target CI_CD_Runner, deployment Perimeter, signature_severity Critical;
-
 )
 ```
 
@@ -797,21 +788,13 @@ Snort/Suricata rule detecting DNS queries for the typosquatted aquasecurtiy doma
 
 ```text
 alert dns any any -\> any 53 (
-
 msg:"TeamPCP Typosquatted C2 Domain DNS Query - aquasecurtiy.org";
-
 dns.query; content:"aquasecurtiy"; nocase;
-
 threshold:type limit, track by_src, count 1, seconds 300;
-
 classtype:trojan-activity;
-
 sid:9001002; rev:1;
-
 reference:url,stepsecurity.io/blog/trivy-compromised-a-second-time---malicious-v0-69-4-release;
-
 metadata:affected_product GitHub_Actions, attack_target CI_CD_Runner, deployment DNS_Inspection, signature_severity Critical;
-
 )
 ```
 
@@ -819,57 +802,32 @@ The following YARA rule targets the TeamPCP Cloud Stealer Python script on disk 
 
 ```text
 rule TeamPCP_Cloud_Stealer_Script {
-```
-
 meta:
-
 description = "Detects TeamPCP Cloud Stealer Python credential harvesting script on disk; targets isSecret JSON key, Runner.Worker process name, /proc memory access, typosquatted C2 domain, and RSA/AES encryption library calls"
-
 author = "1898 & Co. Threat Hunt Team"
-
 date = "2026-03-20"
-
 reference = "https://www.stepsecurity.io/blog/trivy-compromised-a-second-time---malicious-v0-69-4-release"
-
 hash = "dee4e6f155b95a80f60ca7c54106f878507cb359"
-
 strings:
-
 // In-memory secret extraction cluster
-
-\$s1 = "isSecret" ascii // GitHub Actions secret JSON key — primary extraction target
-
-\$s2 = "Runner.Worker" ascii // Target process name for /proc/pid/mem read
-
-\$s3 = "/proc/" ascii // Linux proc filesystem access path
-
+$s1 = "isSecret" ascii // GitHub Actions secret JSON key — primary extraction target
+$s2 = "Runner.Worker" ascii // Target process name for /proc/pid/mem read
+$s3 = "/proc/" ascii // Linux proc filesystem access path
 // C2 communication cluster
-
-\$s4 = "aquasecurtiy" ascii nocase // Typosquatted C2 domain (note misspelling — no 'i' in security)
-
-\$s5 = "X-Filename" ascii // Custom HTTP header used in exfiltration POST
-
-\$s6 = "tpcp.tar.gz" ascii // Exfiltration archive filename
-
+$s4 = "aquasecurtiy" ascii nocase // Typosquatted C2 domain (note misspelling — no 'i' in security)
+$s5 = "X-Filename" ascii // Custom HTTP header used in exfiltration POST
+$s6 = "tpcp.tar.gz" ascii // Exfiltration archive filename
 // Encryption cluster
-
-\$s7 = "PKCS1_OAEP" ascii // RSA-OAEP encryption library (pycryptodome)
-
-\$s8 = "AES.new" ascii // AES encryption initialization
-
+$s7 = "PKCS1_OAEP" ascii // RSA-OAEP encryption library (pycryptodome)
+$s8 = "AES.new" ascii // AES encryption initialization
 // Actor identifier
-
-\$s9 = "tpcp" ascii wide // Actor self-identifier
-
+$s9 = "tpcp" ascii wide // Actor self-identifier
 condition:
-
-any of (\$s1, \$s2) and \$s3 or
-
-\$s4 and (\$s5 or \$s6) or
-
-\$s7 and \$s8 and (\$s1 or \$s9)
-
+any of ($s1, $s2) and $s3 or
+$s4 and ($s5 or $s6) or
+$s7 and $s8 and ($s1 or $s9)
 }
+```
 
 // File-system scan command:
 
@@ -881,43 +839,25 @@ The following YARA rule targets TeamPCP Cloud Stealer indicators in the memory o
 
 ```text
 rule TeamPCP_Cloud_Stealer_Memory {
-```
-
 meta:
-
 description = "Detects TeamPCP Cloud Stealer running in Python process memory; matches co-occurrence of GitHub Actions isSecret key, Runner.Worker target process name, C2 domain, or exfiltration artifacts in heap"
-
 author = "1898 & Co. Threat Hunt Team"
-
 date = "2026-03-20"
-
 reference = "https://www.stepsecurity.io/blog/trivy-compromised-a-second-time---malicious-v0-69-4-release"
-
 strings:
-
-\$m1 = "isSecret" ascii // GitHub Actions in-memory secret JSON key
-
-\$m2 = "Runner.Worker" ascii // Target process name as resident heap string
-
-\$m3 = { 2F 70 72 6F 63 2F } // Hex for "/proc/" — proc filesystem path in memory
-
-\$m4 = "tpcp.tar.gz" ascii // Exfiltration archive name resident in memory
-
-\$m5 = "scan.aquasecurtiy" ascii // C2 domain in memory (note misspelling)
-
-\$m6 = "X-Filename" ascii // Custom exfiltration HTTP header in memory
-
+$m1 = "isSecret" ascii // GitHub Actions in-memory secret JSON key
+$m2 = "Runner.Worker" ascii // Target process name as resident heap string
+$m3 = { 2F 70 72 6F 63 2F } // Hex for "/proc/" — proc filesystem path in memory
+$m4 = "tpcp.tar.gz" ascii // Exfiltration archive name resident in memory
+$m5 = "scan.aquasecurtiy" ascii // C2 domain in memory (note misspelling)
+$m6 = "X-Filename" ascii // Custom exfiltration HTTP header in memory
 condition:
-
-(\$m1 and \$m2) or
-
-(\$m4 and \$m5) or
-
-(\$m5 and \$m6) or
-
-(\$m1 and \$m3 and \$m6)
-
+($m1 and $m2) or
+($m4 and $m5) or
+($m5 and $m6) or
+($m1 and $m3 and $m6)
 }
+```
 
 // Memory scan command (Linux — requires root or ptrace_scope=0):
 
@@ -929,71 +869,39 @@ The following YARA rule is the standing credential dump memory scan rule require
 
 ```text
 rule Credential_Dump_Tool_Memory_Artifacts {
-```
-
 meta:
-
 description = "Standing rule — detects LSASS credential dumping tool artifacts in process memory. Covers Mimikatz, WCE, gsecdump, comsvcs MiniDump, and generic NtReadVirtualMemory+lsass patterns. Apply to Windows runner environments alongside TeamPCP-specific rules."
-
 author = "1898 & Co. Threat Hunt Team"
-
 date = "2026-03-20"
-
 strings:
-
 // Branch 1 — Mimikatz
-
-\$mimi1 = "sekurlsa::logonpasswords" ascii nocase
-
-\$mimi2 = "lsadump::sam" ascii nocase
-
-\$mimi3 = "privilege::debug" ascii nocase
-
-\$mimi4 = "mimikatz" ascii wide nocase
-
-\$mimi5 = { 6D 69 6D 69 6B 61 74 7A } // "mimikatz" hex
-
+$mimi1 = "sekurlsa::logonpasswords" ascii nocase
+$mimi2 = "lsadump::sam" ascii nocase
+$mimi3 = "privilege::debug" ascii nocase
+$mimi4 = "mimikatz" ascii wide nocase
+$mimi5 = { 6D 69 6D 69 6B 61 74 7A } // "mimikatz" hex
 // Branch 2 — Windows Credential Editor (WCE)
-
-\$wce1 = "wce.exe" ascii nocase
-
-\$wce2 = "lsass.exe" ascii nocase
-
+$wce1 = "wce.exe" ascii nocase
+$wce2 = "lsass.exe" ascii nocase
 // Branch 3 — gsecdump
-
-\$gsec = "gsecdump" ascii nocase
-
+$gsec = "gsecdump" ascii nocase
 // Branch 4 — comsvcs MiniDump
-
-\$mini1 = "MiniDump" ascii
-
-\$mini2 = "comsvcs" ascii nocase
-
-\$mini3 = "lsass.exe" ascii nocase
-
+$mini1 = "MiniDump" ascii
+$mini2 = "comsvcs" ascii nocase
+$mini3 = "lsass.exe" ascii nocase
 // Branch 5 — Generic NtReadVirtualMemory + lsass catch-all
-
-\$api1 = "NtReadVirtualMemory" ascii
-
-\$api2 = "ReadProcessMemory" ascii
-
-\$lsass = "lsass.exe" ascii nocase
-
-\$tool = "sekurlsa" ascii nocase
-
+$api1 = "NtReadVirtualMemory" ascii
+$api2 = "ReadProcessMemory" ascii
+$lsass = "lsass.exe" ascii nocase
+$tool = "sekurlsa" ascii nocase
 condition:
-
-(2 of (\$mimi\*)) or
-
-(\$wce1 and \$wce2) or
-
-\$gsec or
-
-(\$mini1 and \$mini2 and \$mini3) or
-
-((\$api1 or \$api2) and \$lsass and \$tool)
-
+(2 of ($mimi\*)) or
+($wce1 and $wce2) or
+$gsec or
+($mini1 and $mini2 and $mini3) or
+(($api1 or $api2) and $lsass and $tool)
 }
+```
 
 // Windows LSASS memory scan via YARA (requires SeDebugPrivilege):
 
